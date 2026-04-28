@@ -123,25 +123,44 @@ export default function CustomerDashboard({ userState = 'Lagos', userName = 'Ade
 
   if (!fontsLoaded) return null;
 
-  const sidebarWidth = collapsed ? 76 : 240;
+  const sidebarWidth = isMobile ? 240 : (collapsed ? 76 : 240);
   const sidebarWebStyle = Platform.OS === 'web'
     ? {
-        transition: 'width 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
         overflow: 'hidden',
         flexShrink: 0,
       }
     : {};
 
   const renderSidebar = () => (
-    <View style={[styles.sidebar, { width: sidebarWidth }, sidebarWebStyle as any]}>
-      <View style={[styles.sidebarLogo, collapsed && { padding: 12 }]}>
-        {collapsed ? (
-          <Image
-            source={require('../assets/images/logo.jpg')}
-            style={{ width: 44, height: 44, borderRadius: 8 }}
-            resizeMode="cover"
-          />
-        ) : (
+    <>
+      {isMobile && !collapsed && (
+        <Pressable 
+          style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 90 }} 
+          onPress={() => setCollapsed(true)} 
+        />
+      )}
+      <View style={[
+        styles.sidebar, 
+        { width: sidebarWidth }, 
+        sidebarWebStyle as any,
+        isMobile && {
+          position: 'absolute',
+          top: 0,
+          bottom: 0,
+          left: 0,
+          zIndex: 100,
+          transform: [{ translateX: collapsed ? -240 : 0 }]
+        }
+      ]}>
+        <View style={[styles.sidebarLogo, (!isMobile && collapsed) && { padding: 12 }]}>
+          {(!isMobile && collapsed) ? (
+            <Image
+              source={require('../assets/images/logo.jpg')}
+              style={{ width: 44, height: 44, borderRadius: 8 }}
+              resizeMode="cover"
+            />
+          ) : (
           <Image
             source={require('../assets/images/logo.jpg')}
             style={styles.sidebarLogoImg}
@@ -160,13 +179,16 @@ export default function CustomerDashboard({ userState = 'Lagos', userName = 'Ade
               style={[
                 styles.navItem,
                 isActive && styles.navItemActive,
-                collapsed && { justifyContent: 'center', paddingHorizontal: 0 },
+                (!isMobile && collapsed) && { justifyContent: 'center', paddingHorizontal: 0 },
               ]}
-              onPress={() => setActiveNav(item.key)}
+              onPress={() => {
+                setActiveNav(item.key);
+                if (isMobile) setCollapsed(true);
+              }}
             >
               {isActive && <View style={styles.navActiveBar} />}
               <Icon color={isActive ? '#ccfd3a' : 'rgba(255,255,255,0.5)'} size={20} />
-              {!collapsed ? (
+              {(!(!isMobile && collapsed)) ? (
                 <Text style={[styles.navItemText, isActive && styles.navItemTextActive]}>
                   {t(item.labelKey)}
                 </Text>
@@ -176,23 +198,24 @@ export default function CustomerDashboard({ userState = 'Lagos', userName = 'Ade
         })}
       </View>
 
-      {!collapsed ? (
+      {(!(!isMobile && collapsed)) ? (
         <View style={styles.sidebarFooter}>
           <Text style={styles.sidebarFooterText}>RENAX Logistics | v1.1.0</Text>
         </View>
       ) : null}
-    </View>
+      </View>
+    </>
   );
 
   const renderTopBar = () => (
     <View style={styles.topBar}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
         <Pressable onPress={() => setCollapsed((prev) => !prev)} style={styles.menuToggle}>
-          {collapsed ? <ChevronRight color="#004d3d" size={24} /> : <ChevronLeft color="#004d3d" size={24} />}
+          {(collapsed || isMobile) ? <ChevronRight color="#004d3d" size={24} /> : <ChevronLeft color="#004d3d" size={24} />}
         </Pressable>
-        <View>
-          <Text style={styles.welcomeText}>{t('dash.welcome')}, {userName}</Text>
-          <Text style={styles.welcomeSub}>{t('dash.subtitle')} {userState ? `Serving ${userState}.` : ''}</Text>
+        <View style={{ flexShrink: 1 }}>
+          <Text style={[styles.welcomeText, isMobile && { fontSize: 20 }]} numberOfLines={1}>{t('dash.welcome')}, {userName}</Text>
+          <Text style={styles.welcomeSub} numberOfLines={isMobile ? 2 : 1}>{t('dash.subtitle')} {userState ? `Serving ${userState}.` : ''}</Text>
         </View>
       </View>
       <View style={styles.topBarRight}>
@@ -224,7 +247,7 @@ export default function CustomerDashboard({ userState = 'Lagos', userName = 'Ade
     ];
 
     return (
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 36, paddingBottom: 80 }}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: isMobile ? 16 : 36, paddingBottom: 80 }} showsVerticalScrollIndicator={false}>
         {renderTopBar()}
 
         {dashboardError ? (
@@ -312,11 +335,13 @@ export default function CustomerDashboard({ userState = 'Lagos', userName = 'Ade
             </Pressable>
           </View>
 
-          <View style={styles.bookingsHeader}>
-            {['Date', 'Order ID', 'Destination', 'Status', 'Actions'].map((header) => (
-              <Text key={header} style={styles.bookingsHeaderCell}>{header}</Text>
-            ))}
-          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <View style={{ minWidth: isMobile ? 600 : '100%' }}>
+              <View style={styles.bookingsHeader}>
+                {['Date', 'Order ID', 'Destination', 'Status', 'Actions'].map((header) => (
+                  <Text key={header} style={styles.bookingsHeaderCell}>{header}</Text>
+                ))}
+              </View>
 
           {(metrics?.recentBookings ?? []).length === 0 ? (
             <Text style={styles.emptyBookings}>No recent bookings yet.</Text>
@@ -327,10 +352,12 @@ export default function CustomerDashboard({ userState = 'Lagos', userName = 'Ade
                 <Text style={[styles.bookingCell, styles.bookingLink]}>{booking.tracking_id || booking.id}</Text>
                 <Text style={styles.bookingCell}>{booking.delivery_address || 'N/A'}</Text>
                 <Text style={styles.bookingCell}>{booking.status || 'Pending'}</Text>
-                <Pressable onPress={() => handleTrackShipment(booking.tracking_id || booking.id)}><Text style={styles.viewDetails}>Track</Text></Pressable>
+                <Pressable onPress={() => handleTrackShipment(booking.tracking_id || booking.id)} style={{ flex: 1, alignItems: 'flex-end' }}><Text style={styles.viewDetails}>Track</Text></Pressable>
               </Animated.View>
             ))
           )}
+            </View>
+          </ScrollView>
         </Animated.View>
       </ScrollView>
     );
@@ -368,7 +395,7 @@ export default function CustomerDashboard({ userState = 'Lagos', userName = 'Ade
 
     return (
       <View style={{ flex: 1 }}>
-        <View style={{ paddingHorizontal: 36, paddingTop: 28 }}>
+        <View style={{ paddingHorizontal: isMobile ? 16 : 36, paddingTop: isMobile ? 16 : 28 }}>
           {renderTopBar()}
         </View>
         <View style={{ flex: 1 }}>
@@ -461,13 +488,13 @@ const styles = StyleSheet.create({
   },
   topBar: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 28,
   },
   welcomeText: { fontFamily: 'PlusJakartaSans_7', fontSize: 26, color: '#121212' },
   welcomeSub: { fontFamily: 'Outfit_4', fontSize: 15, color: '#666', marginTop: 4, maxWidth: 560 },
-  topBarRight: { flexDirection: 'row', alignItems: 'center', gap: 16 },
+  topBarRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   avatarWrap: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   avatar: {
     width: 38,
