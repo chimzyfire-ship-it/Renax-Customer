@@ -235,11 +235,6 @@ export default function SettingsTab({ customerId }: SettingsTabProps) {
               </Pressable>
             ))}
           </View>
-
-          <Pressable style={styles.logoutBtn} onPress={handleLogout}>
-            <LogOut color="#EF4444" size={20} />
-            <Text style={styles.logoutText}>{saving ? 'Working...' : 'Log Out'}</Text>
-          </Pressable>
         </Animated.View>
 
         <Animated.View entering={FadeInDown.delay(200).duration(400)} style={[styles.rightCol, isMobile && { flex: undefined, minWidth: 0, width: '100%' }]}>
@@ -400,7 +395,15 @@ export default function SettingsTab({ customerId }: SettingsTabProps) {
               </View>
             </View>
           ) : null}
+          ) : null}
         </Animated.View>
+      </View>
+
+      <View style={{ marginTop: 24, alignItems: isMobile ? 'stretch' : 'flex-start' }}>
+        <Pressable style={[styles.logoutBtn, !isMobile && { minWidth: 280 }]} onPress={handleLogout}>
+          <LogOut color="#EF4444" size={20} />
+          <Text style={styles.logoutText}>{saving ? 'Working...' : 'Log Out'}</Text>
+        </Pressable>
       </View>
     </ScrollView>
   );

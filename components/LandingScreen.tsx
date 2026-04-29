@@ -213,11 +213,6 @@ export default function LandingScreen({ onEnterApp }) {
 
           {/* HERO COPY */}
           <Animated.View entering={FadeIn.duration(1000)} style={[styles.heroBody, isCompact && { paddingHorizontal: 20, paddingTop: 48, paddingBottom: 72 }, isMobile && !isCompact && { paddingHorizontal: 28, paddingTop: 44, paddingBottom: 64 }]}>
-            <View style={[styles.heroPill, glassLight, isCompact && { marginBottom: 20, paddingHorizontal: 14, paddingVertical: 7 }]}>
-              <View style={styles.heroPillDot} />
-              <Text style={styles.heroPillText}>Nigeria&apos;s #1 Logistics Platform</Text>
-            </View>
-
             <Text
               style={[
                 styles.heroH1,

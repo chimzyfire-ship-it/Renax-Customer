@@ -40,7 +40,7 @@ const FREQ_TYPES = [
 export default function AuthScreen({ onAuthenticated }) {
   const { t } = useTranslation();
   const { width, height } = useWindowDimensions();
-  const isMobile = width < 768;
+  const isMobile = width < 900;
 
   const [fontsLoaded] = useFonts({
     PlusJakartaSans_8: PlusJakartaSans_800ExtraBold,
@@ -191,29 +191,32 @@ export default function AuthScreen({ onAuthenticated }) {
 
       <ScrollView contentContainerStyle={{ flexGrow: 1 }} showsVerticalScrollIndicator={false} bounces={false}>
       <View style={[styles.authContainer, isMobile && { flexDirection: 'column', flex: undefined }]}>
-        {/* ── LEFT PANEL ── */}
         <Animated.View entering={FadeIn.duration(800)} style={[styles.leftPanel, isMobile && styles.leftPanelMobile]}>
-          <Image source={require('../assets/images/logo.jpg')} style={styles.authLogo} resizeMode="contain" />
-          <Text style={styles.authBrandTitle}>RENAX Logistics</Text>
-          <Text style={styles.authBrandSub}>Nigeria's fastest growing{'\n'}logistics platform.</Text>
+          <Image source={require('../assets/images/logo.jpg')} style={[styles.authLogo, isMobile && { height: 60, marginBottom: 12, maxWidth: 200 }]} resizeMode="contain" />
+          <Text style={[styles.authBrandTitle, isMobile && { fontSize: 24, marginBottom: 4 }]}>RENAX Logistics</Text>
+          <Text style={[styles.authBrandSub, isMobile && { fontSize: 14, lineHeight: 20 }]}>Nigeria's fastest growing{'\n'}logistics platform.</Text>
 
-          <View style={{ gap: 16, marginTop: 40 }}>
-            {[
-              { icon: 'express', text: 'Express bike & tricycle delivery' },
-              { icon: 'freight', text: 'Pickup & Heavy Freight nationwide' },
-              { icon: 'tracking', text: 'Live GPS tracking across all 36 states' },
-              { icon: 'insurance', text: 'Fully insured & 24/7 customer support' },
-            ].map(f => (
-              <View key={f.text} style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-                <Text style={{ fontSize: 24 }}>✓</Text>
-                <Text style={styles.featureText}>{f.text}</Text>
+          {!isMobile && (
+            <>
+              <View style={{ gap: 16, marginTop: 40 }}>
+                {[
+                  { icon: 'express', text: 'Express bike & tricycle delivery' },
+                  { icon: 'freight', text: 'Pickup & Heavy Freight nationwide' },
+                  { icon: 'tracking', text: 'Live GPS tracking across all 36 states' },
+                  { icon: 'insurance', text: 'Fully insured & 24/7 customer support' },
+                ].map(f => (
+                  <View key={f.text} style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+                    <Text style={{ fontSize: 24 }}>✓</Text>
+                    <Text style={styles.featureText}>{f.text}</Text>
+                  </View>
+                ))}
               </View>
-            ))}
-          </View>
 
-          <View style={styles.versionTag}>
-            <Text style={styles.versionText}>RENAX Logistics | v1.1.0</Text>
-          </View>
+              <View style={styles.versionTag}>
+                <Text style={styles.versionText}>RENAX Logistics | v1.1.0</Text>
+              </View>
+            </>
+          )}
         </Animated.View>
 
         {/* ── RIGHT PANEL ── */}
@@ -364,8 +367,9 @@ const styles = StyleSheet.create({
   leftPanelMobile: {
     flex: 0,
     paddingHorizontal: 20,
-    paddingTop: 48,
+    paddingTop: 32,
     paddingBottom: 24,
+    justifyContent: 'flex-start',
   },
   authLogo: {
     width: '100%',
