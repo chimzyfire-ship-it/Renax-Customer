@@ -240,7 +240,7 @@ export default function CustomerDashboard({ userState = 'Lagos', userName = 'Ade
 
   if (!fontsLoaded) return null;
 
-  const sidebarWidth = isMobile ? Math.min(width * 0.8, 260) : (desktopCollapsed ? 76 : 240);
+  const sidebarWidth = isMobile ? Math.min(width * 0.45, 240) : (desktopCollapsed ? 76 : 240);
   const sidebarWebStyle = Platform.OS === 'web'
     ? {
         transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
@@ -274,7 +274,7 @@ export default function CustomerDashboard({ userState = 'Lagos', userName = 'Ade
           shadowOffset: { width: 4, height: 0 },
         }
       ]}>
-      <View style={[styles.sidebarLogo, (!isMobile && desktopCollapsed) && { padding: 12 }, isMobile && { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingRight: 16 }]}>
+      <View style={[styles.sidebarLogo, (!isMobile && desktopCollapsed) && { padding: 12 }, isMobile && { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12 }]}>
         {(!isMobile && desktopCollapsed) ? (
           <Image
             source={require('../assets/images/logo.jpg')}
@@ -284,18 +284,18 @@ export default function CustomerDashboard({ userState = 'Lagos', userName = 'Ade
         ) : (
           <Image
             source={require('../assets/images/logo.jpg')}
-            style={[styles.sidebarLogoImg, isMobile && { width: 140 }]}
+            style={[styles.sidebarLogoImg, isMobile && { flex: 1, height: 60, marginRight: 8 }]}
             resizeMode="contain"
           />
         )}
         {isMobile && (
-          <Pressable onPress={() => setMobileMenuOpen(false)} style={{ padding: 8 }}>
+          <Pressable onPress={() => setMobileMenuOpen(false)} style={{ padding: 4 }}>
             <ChevronLeft color="#fff" size={24} />
           </Pressable>
         )}
       </View>
 
-      <View style={styles.sidebarNav}>
+      <ScrollView style={styles.sidebarNav} showsVerticalScrollIndicator={false} bounces={false}>
         {NAV_ITEMS.map((item) => {
           const Icon = item.icon;
           const isActive = activeNav === item.key;
@@ -322,7 +322,7 @@ export default function CustomerDashboard({ userState = 'Lagos', userName = 'Ade
             </Pressable>
           );
         })}
-      </View>
+      </ScrollView>
 
       {(!(!isMobile && desktopCollapsed)) ? (
         <View style={styles.sidebarFooter}>

@@ -146,8 +146,8 @@ export default function SupportTab({ customerId, onTrackShipment }: SupportTabPr
       {successMessage ? <View style={styles.successBanner}><Text style={styles.successText}>{successMessage}</Text></View> : null}
       {errorMessage ? <View style={styles.errorBanner}><Text style={styles.errorText}>{errorMessage}</Text></View> : null}
 
-      <View style={styles.mainGrid}>
-        <Animated.View entering={FadeInDown.delay(100).duration(400)} style={[styles.leftCol, isMobile && { minWidth: 0, maxWidth: '100%' as any, width: '100%' }]}>
+      <View style={[styles.mainGrid, isMobile && { flexDirection: 'column', flexWrap: 'nowrap' }]}>
+        <Animated.View entering={FadeInDown.delay(100).duration(400)} style={[styles.leftCol, isMobile && { flex: undefined, minWidth: 0, maxWidth: '100%', width: '100%' }]}>
           <View style={[styles.contactCard, isCompact && { padding: 18 }]}>
             <View style={styles.contactIconWrap}>
               <Phone color="#004d3d" size={24} />
@@ -155,7 +155,7 @@ export default function SupportTab({ customerId, onTrackShipment }: SupportTabPr
             <Text style={styles.contactTitle}>Call Operations</Text>
             <Text style={styles.contactSub}>Use phone support for urgent delivery or dispatch issues during business hours.</Text>
             <Pressable style={styles.btnOutline} onPress={openPhone}>
-              <Text style={styles.btnOutlineText}>+234 800 RENAX</Text>
+              <Text style={styles.btnOutlineText} adjustsFontSizeToFit numberOfLines={1}>+234 800 RENAX</Text>
             </Pressable>
           </View>
 
@@ -166,7 +166,7 @@ export default function SupportTab({ customerId, onTrackShipment }: SupportTabPr
             <Text style={styles.contactTitle}>Email Support</Text>
             <Text style={styles.contactSub}>Use email for documentation, proofs, address clarifications, and less urgent follow-up.</Text>
             <Pressable style={styles.btnOutline} onPress={openEmail}>
-              <Text style={styles.btnOutlineText}>support@renax.ng</Text>
+              <Text style={styles.btnOutlineText} adjustsFontSizeToFit numberOfLines={1}>support@renax.ng</Text>
             </Pressable>
           </View>
 
@@ -182,7 +182,7 @@ export default function SupportTab({ customerId, onTrackShipment }: SupportTabPr
           </View>
         </Animated.View>
 
-        <Animated.View entering={FadeInDown.delay(200).duration(400)} style={[styles.rightCol, isMobile && { minWidth: 0, width: '100%' }]}>
+        <Animated.View entering={FadeInDown.delay(200).duration(400)} style={[styles.rightCol, isMobile && { flex: undefined, minWidth: 0, width: '100%' }]}>
           <View style={[styles.card, isCompact && { padding: 18 }]}>
             <Text style={styles.cardTitle}>Frequently Asked Questions</Text>
 
