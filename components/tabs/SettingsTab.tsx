@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { setAppLanguage } from '../../i18n';
 import { Bell, ChevronRight, Globe, Lock, LogOut, Mail, User } from 'lucide-react-native';
@@ -21,6 +21,9 @@ type SectionKey = 'profile' | 'notifications' | 'security' | 'language';
 
 export default function SettingsTab({ customerId }: SettingsTabProps) {
   const { t, i18n } = useTranslation();
+  const { width } = useWindowDimensions();
+  const isMobile = width < 900;
+  const isCompact = width < 640;
   const [activeSection, setActiveSection] = useState<SectionKey>('profile');
   const [resolvedCustomerId, setResolvedCustomerId] = useState<string | null>(customerId ?? null);
   const [profileForm, setProfileForm] = useState({
@@ -204,10 +207,10 @@ export default function SettingsTab({ customerId }: SettingsTabProps) {
   ];
 
   return (
-    <ScrollView style={styles.root} contentContainerStyle={{ padding: 32, paddingBottom: 80 }}>
+    <ScrollView style={styles.root} contentContainerStyle={{ padding: isCompact ? 12 : isMobile ? 16 : 32, paddingBottom: 80 }}>
       <View style={styles.pageHeader}>
         <View>
-          <Text style={styles.pageTitle}>{t('dash.settings', 'Settings')}</Text>
+          <Text style={[styles.pageTitle, isCompact && { fontSize: 22 }]}>{t('dash.settings', 'Settings')}</Text>
           <Text style={styles.pageSub}>Manage your profile, notifications, security, and localization preferences.</Text>
         </View>
       </View>
@@ -216,7 +219,7 @@ export default function SettingsTab({ customerId }: SettingsTabProps) {
       {flashError ? <View style={styles.errorBanner}><Text style={styles.errorText}>{flashError}</Text></View> : null}
 
       <View style={styles.mainGrid}>
-        <Animated.View entering={FadeInDown.delay(100).duration(400)} style={styles.leftCol}>
+        <Animated.View entering={FadeInDown.delay(100).duration(400)} style={[styles.leftCol, isMobile && { minWidth: 0, maxWidth: '100%' as any, width: '100%' }]}>
           <View style={styles.menuCard}>
             {menuItems.map((item, index) => (
               <Pressable
@@ -239,15 +242,15 @@ export default function SettingsTab({ customerId }: SettingsTabProps) {
           </Pressable>
         </Animated.View>
 
-        <Animated.View entering={FadeInDown.delay(200).duration(400)} style={styles.rightCol}>
+        <Animated.View entering={FadeInDown.delay(200).duration(400)} style={[styles.rightCol, isMobile && { minWidth: 0, width: '100%' }]}>
           {isLoading ? (
-            <View style={styles.card}>
+            <View style={[styles.card, isCompact && { padding: 18 }]}>
               <Text style={styles.pageSub}>Loading customer settings...</Text>
             </View>
           ) : null}
 
           {!isLoading && activeSection === 'profile' ? (
-            <View style={styles.card}>
+            <View style={[styles.card, isCompact && { padding: 18 }]}>
               <Text style={styles.cardTitle}>Profile Information</Text>
               <View style={styles.inputGrid}>
                 <View style={styles.inputWrap}>
@@ -268,7 +271,7 @@ export default function SettingsTab({ customerId }: SettingsTabProps) {
                 </View>
               </View>
               <View style={styles.cardActionRow}>
-                <Pressable style={styles.saveBtn} onPress={saveProfile}>
+                <Pressable style={[styles.saveBtn, isCompact && { width: '100%', alignItems: 'center' }]} onPress={saveProfile}>
                   <Text style={styles.saveBtnText}>{saving ? 'Saving...' : 'Save Changes'}</Text>
                 </Pressable>
               </View>
@@ -276,7 +279,7 @@ export default function SettingsTab({ customerId }: SettingsTabProps) {
           ) : null}
 
           {!isLoading && activeSection === 'notifications' ? (
-            <View style={styles.card}>
+            <View style={[styles.card, isCompact && { padding: 18 }]}>
               <Text style={styles.cardTitle}>Notification Preferences</Text>
               {[
                 {
@@ -300,7 +303,7 @@ export default function SettingsTab({ customerId }: SettingsTabProps) {
                   sub: 'Occasional new-feature and promotional messages.',
                 },
               ].map((item, index, items) => (
-                <View key={item.key} style={[styles.toggleRow, index === items.length - 1 && { borderBottomWidth: 0, paddingBottom: 0, marginBottom: 0 }]}>
+                <View key={item.key} style={[styles.toggleRow, isCompact && { flexDirection: 'column', alignItems: 'flex-start' }, index === items.length - 1 && { borderBottomWidth: 0, paddingBottom: 0, marginBottom: 0 }]}>
                   <View style={{ flex: 1, paddingRight: 16 }}>
                     <Text style={styles.toggleTitle}>{item.title}</Text>
                     <Text style={styles.toggleSub}>{item.sub}</Text>
@@ -317,7 +320,7 @@ export default function SettingsTab({ customerId }: SettingsTabProps) {
           ) : null}
 
           {!isLoading && activeSection === 'security' ? (
-            <View style={styles.card}>
+            <View style={[styles.card, isCompact && { padding: 18 }]}>
               <Text style={styles.cardTitle}>Password & Security</Text>
               <View style={styles.infoCard}>
                 <Mail color="#004d3d" size={18} />
@@ -335,7 +338,7 @@ export default function SettingsTab({ customerId }: SettingsTabProps) {
                 <TextInput style={styles.input} value={securityForm.newPassword} onChangeText={(value) => setSecurityForm((current) => ({ ...current, newPassword: value }))} placeholder="Enter a new password" secureTextEntry />
               </View>
 
-              <View style={styles.toggleRow}>
+              <View style={[styles.toggleRow, isCompact && { flexDirection: 'column', alignItems: 'flex-start' }]}>
                 <View style={{ flex: 1, paddingRight: 16 }}>
                   <Text style={styles.toggleTitle}>Two-factor readiness flag</Text>
                   <Text style={styles.toggleSub}>Tracks whether the customer wants 2FA enabled when a verification provider is connected.</Text>
@@ -349,7 +352,7 @@ export default function SettingsTab({ customerId }: SettingsTabProps) {
               </View>
 
               <View style={styles.cardActionRow}>
-                <Pressable style={styles.saveBtn} onPress={saveSecurity}>
+                <Pressable style={[styles.saveBtn, isCompact && { width: '100%', alignItems: 'center' }]} onPress={saveSecurity}>
                   <Text style={styles.saveBtnText}>{saving ? 'Saving...' : 'Apply Security Changes'}</Text>
                 </Pressable>
               </View>
@@ -357,7 +360,7 @@ export default function SettingsTab({ customerId }: SettingsTabProps) {
           ) : null}
 
           {!isLoading && activeSection === 'language' ? (
-            <View style={styles.card}>
+            <View style={[styles.card, isCompact && { padding: 18 }]}>
               <Text style={styles.cardTitle}>Language & Region</Text>
               <View style={styles.inputWrap}>
                 <Text style={styles.inputLabel}>Preferred Language</Text>
@@ -391,7 +394,7 @@ export default function SettingsTab({ customerId }: SettingsTabProps) {
               </View>
 
               <View style={styles.cardActionRow}>
-                <Pressable style={styles.saveBtn} onPress={() => persistSettings({ region: settingsForm.region }, 'Language and region saved.')}>
+                <Pressable style={[styles.saveBtn, isCompact && { width: '100%', alignItems: 'center' }]} onPress={() => persistSettings({ region: settingsForm.region }, 'Language and region saved.')}>
                   <Text style={styles.saveBtnText}>{saving ? 'Saving...' : 'Save Region'}</Text>
                 </Pressable>
               </View>

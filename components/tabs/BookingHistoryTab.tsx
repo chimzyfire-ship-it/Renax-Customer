@@ -6,6 +6,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { ChevronDown, FileText, Navigation2, RefreshCw, X } from 'lucide-react-native';
@@ -128,6 +129,9 @@ function FilterSelect({
 }
 
 export default function BookingHistoryTab({ customerId, onTrackShipment }: BookingHistoryTabProps) {
+  const { width } = useWindowDimensions();
+  const isMobile = width < 900;
+  const isCompact = width < 640;
   const [resolvedCustomerId, setResolvedCustomerId] = useState<string | null>(customerId ?? null);
   const [bookings, setBookings] = useState<ShipmentRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -226,16 +230,16 @@ export default function BookingHistoryTab({ customerId, onTrackShipment }: Booki
 
   return (
     <>
-      <ScrollView style={styles.root} contentContainerStyle={{ padding: 32, paddingBottom: 60 }}>
-        <Text style={styles.pageTitle}>Booking History</Text>
+      <ScrollView style={styles.root} contentContainerStyle={{ padding: isCompact ? 12 : isMobile ? 16 : 32, paddingBottom: 60 }}>
+        <Text style={[styles.pageTitle, isCompact && { fontSize: 22, marginBottom: 18 }]}>Booking History</Text>
 
-        <View style={styles.card}>
-          <View style={styles.cardHead}>
+        <View style={[styles.card, isCompact && { padding: 18 }]}>
+          <View style={[styles.cardHead, isMobile && { flexDirection: 'column', alignItems: 'stretch' }]}>
             <View>
               <Text style={styles.cardTitle}>Your Past Bookings</Text>
               <Text style={styles.cardSub}>Track, review, and inspect every shipment placed from this account.</Text>
             </View>
-            <Pressable style={styles.refreshBtn} onPress={() => loadBookings(true)}>
+            <Pressable style={[styles.refreshBtn, isMobile && { alignSelf: 'flex-start' }]} onPress={() => loadBookings(true)}>
               <RefreshCw color="#004d3d" size={16} />
               <Text style={styles.refreshBtnText}>{refreshing ? 'Refreshing...' : 'Refresh'}</Text>
             </Pressable>
@@ -262,14 +266,6 @@ export default function BookingHistoryTab({ customerId, onTrackShipment }: Booki
             />
           </View>
 
-          <View style={styles.tableHeader}>
-            {['Date', 'Order ID', 'Destination', 'Status', 'Amount (₦)', 'Actions'].map((header, index) => (
-              <Text key={header} style={[styles.thCell, index === 5 && { textAlign: 'right' }]}>
-                {header}
-              </Text>
-            ))}
-          </View>
-
           {isLoading ? (
             <View style={styles.centerState}>
               <ActivityIndicator color="#004d3d" size="large" />
@@ -285,37 +281,101 @@ export default function BookingHistoryTab({ customerId, onTrackShipment }: Booki
             </View>
           ) : (
             <>
-              {filteredBookings.slice(0, 50).map((booking, index) => {
-                const derivedStatus = shipmentStatusFromStage(booking.dispatch_stage || 'pending_routing', booking.routing_mode || 'last_mile_local');
-                const statusKey = booking.status || derivedStatus;
-                const statusStyle = STATUS_STYLE[statusKey] ?? STATUS_STYLE.Pending;
+              {isMobile ? (
+                <View style={styles.mobileList}>
+                  {filteredBookings.slice(0, 50).map((booking, index) => {
+                    const derivedStatus = shipmentStatusFromStage(booking.dispatch_stage || 'pending_routing', booking.routing_mode || 'last_mile_local');
+                    const statusKey = booking.status || derivedStatus;
+                    const statusStyle = STATUS_STYLE[statusKey] ?? STATUS_STYLE.Pending;
 
-                return (
-                  <Animated.View
-                    key={booking.id}
-                    entering={FadeInDown.delay(index * 50).duration(300)}
-                    style={[styles.tableRow, index % 2 === 0 && styles.tableRowAlt]}
-                  >
-                    <Text style={styles.tdCell}>{formatDate(booking.created_at)}</Text>
-                    <Text style={[styles.tdCell, styles.orderId]}>{booking.tracking_id || booking.id}</Text>
-                    <Text style={styles.tdCell}>{booking.delivery_address || 'N/A'}</Text>
-                    <View style={[styles.statusBadge, { backgroundColor: statusStyle.bg }]}>
-                      <Text style={[styles.statusBadgeText, { color: statusStyle.text }]}>{statusKey}</Text>
-                    </View>
-                    <Text style={[styles.tdCell, styles.amountCell]}>{formatAmount(booking.estimated_price)}</Text>
-                    <View style={styles.actionsCell}>
-                      <Pressable style={styles.actionBtn} onPress={() => handleViewDetails(booking)}>
-                        <FileText color="#002B22" size={14} />
-                        <Text style={styles.actionBtnText}>View Details</Text>
-                      </Pressable>
-                      <Pressable style={styles.actionBtnOutline} onPress={() => handleTrack(booking)}>
-                        <Navigation2 color="#004d3d" size={14} />
-                        <Text style={styles.actionBtnOutlineText}>Track</Text>
-                      </Pressable>
-                    </View>
-                  </Animated.View>
-                );
-              })}
+                    return (
+                      <Animated.View
+                        key={booking.id}
+                        entering={FadeInDown.delay(index * 50).duration(300)}
+                        style={styles.mobileCard}
+                      >
+                        <View style={styles.mobileCardTop}>
+                          <View style={{ flex: 1, minWidth: 0 }}>
+                            <Text style={styles.mobileLabel}>Order ID</Text>
+                            <Text style={styles.mobileOrderId}>{booking.tracking_id || booking.id}</Text>
+                          </View>
+                          <View style={[styles.mobileStatusBadge, { backgroundColor: statusStyle.bg }]}>
+                            <Text style={[styles.statusBadgeText, { color: statusStyle.text }]}>{statusKey}</Text>
+                          </View>
+                        </View>
+
+                        <View style={styles.mobileMetaGrid}>
+                          <View style={styles.mobileMetaBlock}>
+                            <Text style={styles.mobileLabel}>Date</Text>
+                            <Text style={styles.mobileValue}>{formatDate(booking.created_at)}</Text>
+                          </View>
+                          <View style={styles.mobileMetaBlock}>
+                            <Text style={styles.mobileLabel}>Amount</Text>
+                            <Text style={[styles.mobileValue, styles.amountCell]}>{formatAmount(booking.estimated_price)}</Text>
+                          </View>
+                          <View style={styles.mobileMetaBlock}>
+                            <Text style={styles.mobileLabel}>Destination</Text>
+                            <Text style={styles.mobileValue}>{booking.delivery_address || 'N/A'}</Text>
+                          </View>
+                        </View>
+
+                        <View style={styles.mobileActions}>
+                          <Pressable style={[styles.actionBtn, styles.mobileActionBtn]} onPress={() => handleViewDetails(booking)}>
+                            <FileText color="#002B22" size={14} />
+                            <Text style={styles.actionBtnText}>View Details</Text>
+                          </Pressable>
+                          <Pressable style={[styles.actionBtnOutline, styles.mobileActionBtn]} onPress={() => handleTrack(booking)}>
+                            <Navigation2 color="#004d3d" size={14} />
+                            <Text style={styles.actionBtnOutlineText}>Track</Text>
+                          </Pressable>
+                        </View>
+                      </Animated.View>
+                    );
+                  })}
+                </View>
+              ) : (
+                <>
+                  <View style={styles.tableHeader}>
+                    {['Date', 'Order ID', 'Destination', 'Status', 'Amount (₦)', 'Actions'].map((header, index) => (
+                      <Text key={header} style={[styles.thCell, index === 5 && { textAlign: 'right' }]}>
+                        {header}
+                      </Text>
+                    ))}
+                  </View>
+
+                  {filteredBookings.slice(0, 50).map((booking, index) => {
+                    const derivedStatus = shipmentStatusFromStage(booking.dispatch_stage || 'pending_routing', booking.routing_mode || 'last_mile_local');
+                    const statusKey = booking.status || derivedStatus;
+                    const statusStyle = STATUS_STYLE[statusKey] ?? STATUS_STYLE.Pending;
+
+                    return (
+                      <Animated.View
+                        key={booking.id}
+                        entering={FadeInDown.delay(index * 50).duration(300)}
+                        style={[styles.tableRow, index % 2 === 0 && styles.tableRowAlt]}
+                      >
+                        <Text style={styles.tdCell}>{formatDate(booking.created_at)}</Text>
+                        <Text style={[styles.tdCell, styles.orderId]}>{booking.tracking_id || booking.id}</Text>
+                        <Text style={styles.tdCell}>{booking.delivery_address || 'N/A'}</Text>
+                        <View style={[styles.statusBadge, { backgroundColor: statusStyle.bg }]}>
+                          <Text style={[styles.statusBadgeText, { color: statusStyle.text }]}>{statusKey}</Text>
+                        </View>
+                        <Text style={[styles.tdCell, styles.amountCell]}>{formatAmount(booking.estimated_price)}</Text>
+                        <View style={styles.actionsCell}>
+                          <Pressable style={styles.actionBtn} onPress={() => handleViewDetails(booking)}>
+                            <FileText color="#002B22" size={14} />
+                            <Text style={styles.actionBtnText}>View Details</Text>
+                          </Pressable>
+                          <Pressable style={styles.actionBtnOutline} onPress={() => handleTrack(booking)}>
+                            <Navigation2 color="#004d3d" size={14} />
+                            <Text style={styles.actionBtnOutlineText}>Track</Text>
+                          </Pressable>
+                        </View>
+                      </Animated.View>
+                    );
+                  })}
+                </>
+              )}
 
               <Text style={styles.footNote}>
                 Displaying {Math.min(filteredBookings.length, 50)} of {filteredBookings.length} booking{filteredBookings.length === 1 ? '' : 's'}.
@@ -327,7 +387,7 @@ export default function BookingHistoryTab({ customerId, onTrackShipment }: Booki
 
       <Modal visible={!!selectedBooking} transparent animationType="slide" onRequestClose={() => setSelectedBooking(null)}>
         <Pressable style={styles.modalOverlay} onPress={() => setSelectedBooking(null)}>
-          <Pressable style={styles.detailsModal} onPress={() => {}}>
+          <Pressable style={[styles.detailsModal, isCompact && { padding: 18 }]} onPress={() => {}}>
             <View style={styles.modalHead}>
               <View>
                 <Text style={styles.detailsTitle}>Booking Details</Text>
@@ -346,21 +406,21 @@ export default function BookingHistoryTab({ customerId, onTrackShipment }: Booki
             ) : (
               <ScrollView showsVerticalScrollIndicator={false}>
                 <View style={styles.detailsGrid}>
-                  <View style={styles.detailsItem}>
+                  <View style={[styles.detailsItem, isMobile && styles.detailsItemMobile]}>
                     <Text style={styles.detailsLabel}>Created</Text>
                     <Text style={styles.detailsValue}>{formatDateTime(selectedBooking?.created_at)}</Text>
                   </View>
-                  <View style={styles.detailsItem}>
+                  <View style={[styles.detailsItem, isMobile && styles.detailsItemMobile]}>
                     <Text style={styles.detailsLabel}>Status</Text>
                     <Text style={styles.detailsValue}>
                       {shipmentStatusFromStage(selectedBooking?.dispatch_stage || 'pending_routing', selectedBooking?.routing_mode || 'last_mile_local')}
                     </Text>
                   </View>
-                  <View style={styles.detailsItem}>
+                  <View style={[styles.detailsItem, isMobile && styles.detailsItemMobile]}>
                     <Text style={styles.detailsLabel}>Dispatch Stage</Text>
                     <Text style={styles.detailsValue}>{stageLabel(selectedBooking?.dispatch_stage || 'pending_routing')}</Text>
                   </View>
-                  <View style={styles.detailsItem}>
+                  <View style={[styles.detailsItem, isMobile && styles.detailsItemMobile]}>
                     <Text style={styles.detailsLabel}>Routing</Text>
                     <Text style={styles.detailsValue}>
                       {selectedBooking?.routing_mode === 'relay_terminal'
@@ -370,29 +430,29 @@ export default function BookingHistoryTab({ customerId, onTrackShipment }: Booki
                           : 'Local Delivery'}
                     </Text>
                   </View>
-                  <View style={styles.detailsItem}>
+                  <View style={[styles.detailsItem, isMobile && styles.detailsItemMobile]}>
                     <Text style={styles.detailsLabel}>Pickup</Text>
                     <Text style={styles.detailsValue}>{selectedBooking?.pickup_address || 'N/A'}</Text>
                   </View>
-                  <View style={styles.detailsItem}>
+                  <View style={[styles.detailsItem, isMobile && styles.detailsItemMobile]}>
                     <Text style={styles.detailsLabel}>Destination</Text>
                     <Text style={styles.detailsValue}>{selectedBooking?.delivery_address || 'N/A'}</Text>
                   </View>
-                  <View style={styles.detailsItem}>
+                  <View style={[styles.detailsItem, isMobile && styles.detailsItemMobile]}>
                     <Text style={styles.detailsLabel}>Service</Text>
                     <Text style={styles.detailsValue}>{selectedBooking?.service_level || 'N/A'}</Text>
                   </View>
-                  <View style={styles.detailsItem}>
+                  <View style={[styles.detailsItem, isMobile && styles.detailsItemMobile]}>
                     <Text style={styles.detailsLabel}>Payment</Text>
                     <Text style={styles.detailsValue}>{selectedBooking?.payment_method || 'N/A'}</Text>
                   </View>
-                  <View style={styles.detailsItem}>
+                  <View style={[styles.detailsItem, isMobile && styles.detailsItemMobile]}>
                     <Text style={styles.detailsLabel}>Distance</Text>
                     <Text style={styles.detailsValue}>
                       {selectedBooking?.distance_km ? `${selectedBooking.distance_km} km` : 'N/A'}
                     </Text>
                   </View>
-                  <View style={styles.detailsItem}>
+                  <View style={[styles.detailsItem, isMobile && styles.detailsItemMobile]}>
                     <Text style={styles.detailsLabel}>Amount</Text>
                     <Text style={styles.detailsValue}>{formatAmount(selectedBooking?.estimated_price)}</Text>
                   </View>
@@ -522,6 +582,36 @@ const styles = StyleSheet.create({
   },
   actionBtnOutlineText: { fontFamily: 'Outfit_6', fontSize: 12, color: '#004d3d' },
   footNote: { fontFamily: 'Outfit_4', fontSize: 13, color: '#888', marginTop: 20 },
+  mobileList: { gap: 14 },
+  mobileCard: {
+    borderWidth: 1,
+    borderColor: '#eef1ef',
+    borderRadius: 16,
+    padding: 16,
+    backgroundColor: '#fbfcfb',
+    gap: 14,
+  },
+  mobileCardTop: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
+  mobileLabel: {
+    fontFamily: 'Outfit_6',
+    fontSize: 11,
+    color: '#7b8794',
+    textTransform: 'uppercase',
+    letterSpacing: 0.7,
+    marginBottom: 4,
+  },
+  mobileOrderId: { fontFamily: 'Outfit_7', fontSize: 17, color: '#004d3d' },
+  mobileStatusBadge: {
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    alignSelf: 'flex-start',
+  },
+  mobileMetaGrid: { gap: 12 },
+  mobileMetaBlock: { gap: 4 },
+  mobileValue: { fontFamily: 'Outfit_4', fontSize: 14, color: '#333', lineHeight: 20 },
+  mobileActions: { gap: 10 },
+  mobileActionBtn: { justifyContent: 'center' },
   centerState: { paddingVertical: 40, alignItems: 'center', justifyContent: 'center', gap: 12 },
   centerStateText: { color: '#888', fontFamily: 'Outfit_4', textAlign: 'center' },
   errorText: { color: '#B91C1C', fontFamily: 'Outfit_6', textAlign: 'center' },
@@ -585,6 +675,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#eef1ef',
   },
+  detailsItemMobile: { width: '100%' },
   detailsLabel: { fontFamily: 'Outfit_6', fontSize: 12, color: '#777', marginBottom: 6, textTransform: 'uppercase' },
   detailsValue: { fontFamily: 'Outfit_6', fontSize: 14, color: '#111' },
   timelineTitle: { fontFamily: 'PlusJakartaSans_7', fontSize: 18, color: '#111', marginBottom: 12 },

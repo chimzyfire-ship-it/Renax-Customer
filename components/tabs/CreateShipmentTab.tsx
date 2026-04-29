@@ -562,9 +562,6 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
               onChangeText={setDeliveryLandmark}
             />
           </View>
-          <Pressable style={styles.viewMapBtn}>
-            <Text style={styles.viewMapBtnText}>View Landmark on Map</Text>
-          </Pressable>
         </View>
       </View>
 
@@ -575,8 +572,8 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
             <Text style={styles.sectionTitle}>3. Package &amp; Service Details</Text>
             {isStep3Complete && <CheckCircle2 color="#10B981" size={20} />}
           </View>
-          <View style={styles.row}>
-            <View style={{ flex: 1 }}>
+          <View style={styles.packageMetaGrid}>
+            <View style={styles.packageMetaField}>
               <Text style={styles.fieldNoteTitle}>Weight (kg)</Text>
               {renderSmartInput({
                 placeholder: "kg",
@@ -584,14 +581,14 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
                 keyboardType: "numeric",
               }, weight)}
             </View>
-            <View style={{ flex: 1 }}>
+            <View style={[styles.packageMetaField, styles.packageMetaFieldWide]}>
               <Text style={styles.fieldNoteTitle}>Dimensions (cm) - Optional</Text>
               {renderSmartInput({
                 placeholder: "L x W x H cm",
                 onChangeText: setDims,
               }, dims)}
             </View>
-            <View style={{ flex: 1 }}>
+            <View style={styles.packageMetaField}>
               <Text style={styles.fieldNoteTitle}>Package Category</Text>
               <SelectBox
                 value={category}
@@ -602,11 +599,11 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
           </View>
           
           <Text style={[styles.fieldNoteTitle, { marginTop: 8 }]}>Package Description (Required)</Text>
-          <View style={[styles.inputWrap, packageDescription ? styles.inputWrapFilled : null, { height: 80, alignItems: 'flex-start', paddingVertical: 12 }]}>
+          <View style={[styles.inputWrap, styles.textAreaWrap, packageDescription ? styles.inputWrapFilled : null]}>
             <TextInput
               placeholder="Manually type in package description (e.g. 2 Laptops, 1 Printer)"
               placeholderTextColor="#aaa"
-              style={[styles.input, { textAlignVertical: 'top' }]}
+              style={[styles.input, styles.textAreaInput]}
               value={packageDescription}
               onChangeText={setPackageDescription}
               multiline
@@ -808,20 +805,23 @@ const styles = StyleSheet.create({
   formGrid: { flexDirection: 'row', gap: 20, marginBottom: 20 },
   formCard: { flex: 1, backgroundColor: '#fff', borderRadius: 16, padding: 24, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8 },
   sectionTitle: { fontFamily: 'PlusJakartaSans_7', fontSize: 16, color: '#111', marginBottom: 16 },
-  row: { flexDirection: 'row', gap: 12, marginBottom: 16, flexWrap: 'wrap' },
+  row: { flexDirection: 'row', gap: 12, marginBottom: 16, flexWrap: 'wrap', alignItems: 'flex-start' },
   select: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1, borderColor: '#ddd', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 12, backgroundColor: '#fafafa', height: 48 },
   selectText: { fontFamily: 'Outfit_4', fontSize: 14, color: '#333', flex: 1 },
   inputWrap: { flex: 1, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 8, paddingHorizontal: 12, backgroundColor: '#fafafa', height: 48 },
   inputWrapFilled: { borderColor: '#10B981', backgroundColor: '#f0fdf4' },
   input: { flex: 1, fontFamily: 'Outfit_4', fontSize: 14, color: '#333', height: '100%' },
+  packageMetaGrid: { flexDirection: 'row', gap: 12, marginBottom: 16, flexWrap: 'wrap', alignItems: 'flex-start' },
+  packageMetaField: { flexGrow: 1, flexBasis: 180, minWidth: 180 },
+  packageMetaFieldWide: { flexBasis: 220 },
+  textAreaWrap: { minHeight: 104, height: 'auto', alignItems: 'flex-start', paddingTop: 12, paddingBottom: 12 },
+  textAreaInput: { textAlignVertical: 'top', height: 80 },
   fieldNoteTitle: { fontFamily: 'Outfit_6', fontSize: 13, color: '#333', marginBottom: 4 },
   fieldNote: { fontFamily: 'Outfit_4', fontSize: 12, color: '#888', marginBottom: 8 },
   landmarkBtn: { borderWidth: 1, borderColor: '#ccfd3a', borderRadius: 8, paddingVertical: 10, paddingHorizontal: 16, alignSelf: 'flex-start', marginTop: 10 },
   landmarkBtnText: { fontFamily: 'Outfit_6', fontSize: 13, color: '#004d3d' },
   landmarkRequiredBox: { backgroundColor: '#FEF9E7', borderRadius: 8, padding: 12, borderWidth: 1, borderColor: '#F2C94C', marginTop: 8 },
   landmarkReqTitle: { fontFamily: 'Outfit_7', fontSize: 13, color: '#B45309', marginBottom: 4 },
-  viewMapBtn: { borderWidth: 1, borderColor: '#ddd', borderRadius: 8, paddingVertical: 10, paddingHorizontal: 16, alignSelf: 'flex-end', marginTop: 8 },
-  viewMapBtnText: { fontFamily: 'Outfit_6', fontSize: 13, color: '#444' },
   serviceRow: { flexDirection: 'row', gap: 12, marginBottom: 16 },
   serviceCard: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 6, padding: 14, borderRadius: 12, borderWidth: 1.5, borderColor: '#e0e0e0', backgroundColor: '#fafafa' },
   serviceCardActive: { borderColor: '#004d3d', backgroundColor: '#004d3d' },

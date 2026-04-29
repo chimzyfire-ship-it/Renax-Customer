@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Image, Pressable, Platform, ScrollView, useWindowDimensions, Modal, TouchableOpacity, TouchableWithoutFeedback } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, Image, Pressable, Platform, ScrollView, useWindowDimensions, TouchableWithoutFeedback } from 'react-native';
 import { useFonts, PlusJakartaSans_800ExtraBold, PlusJakartaSans_600SemiBold, PlusJakartaSans_700Bold } from '@expo-google-fonts/plus-jakarta-sans';
 import { Outfit_400Regular, Outfit_600SemiBold, Outfit_700Bold } from '@expo-google-fonts/outfit';
 import { PlayfairDisplay_700Bold, PlayfairDisplay_600SemiBold } from '@expo-google-fonts/playfair-display';
@@ -24,7 +24,7 @@ const HoverBtn = ({ children, style, onPress, ...props }) => {
 };
 
 // === SERVICE CARD ===
-const ServiceCard = ({ source }) => {
+const ServiceCard = ({ source, cardWidth = 260 }) => {
   const scale = useSharedValue(1);
   const glow = useSharedValue(0);
   const anim = useAnimatedStyle(() => ({
@@ -38,7 +38,7 @@ const ServiceCard = ({ source }) => {
       onHoverIn={() => { if (Platform.OS === 'web') { scale.value = withSpring(1.04, { damping: 14 }); glow.value = withSpring(0.6); } }}
       onHoverOut={() => { if (Platform.OS === 'web') { scale.value = withSpring(1); glow.value = withSpring(0); } }}
     >
-      <Animated.View style={[styles.cardWrapper, anim]}>
+      <Animated.View style={[styles.cardWrapper, { width: cardWidth }, anim]}>
         <Image source={source} style={styles.cardImg} />
         {/* Targeted patch to cover watermark only */}
         <View style={styles.wmPatch} />
@@ -49,8 +49,6 @@ const ServiceCard = ({ source }) => {
 
 // === DROPDOWN MENU ITEM ===
 const DropItem = ({ icon: Icon, label, desc }) => {
-  const bg = useSharedValue('transparent');
-  const anim = useAnimatedStyle(() => ({})); // color anim handled by state
   const [hovered, setHovered] = useState(false);
 
   return (
@@ -74,7 +72,7 @@ const DropItem = ({ icon: Icon, label, desc }) => {
 // == BOUNCING CHEVRON ==
 const BouncingScroll = () => {
   const y = useSharedValue(0);
-  useEffect(() => { y.value = withRepeat(withTiming(12, { duration: 900 }), -1, true); }, []);
+  useEffect(() => { y.value = withRepeat(withTiming(12, { duration: 900 }), -1, true); }, [y]);
   const anim = useAnimatedStyle(() => ({ transform: [{ translateY: y.value }] }));
   return (
     <Animated.View style={[styles.scrollHint, anim]}>
@@ -128,7 +126,11 @@ const NAV = [
 export default function LandingScreen({ onEnterApp }) {
   const { width, height } = useWindowDimensions();
   const isMobile = width < 900;
+  const isCompact = width < 640;
   const [openMenu, setOpenMenu] = useState(null);
+  const heroHeight = isCompact ? Math.max(height, 760) : isMobile ? Math.max(height, 860) : height;
+  const servicesHeight = isCompact ? 760 : isMobile ? 920 : height;
+  const cardWidth = isCompact ? Math.min(width - 40, 320) : isMobile ? 300 : 260;
 
   const [fontsLoaded] = useFonts({
     PlusJakartaSans_8: PlusJakartaSans_800ExtraBold,
@@ -165,7 +167,7 @@ export default function LandingScreen({ onEnterApp }) {
       <ScrollView style={{ flex: 1, backgroundColor: '#020f09' }} showsVerticalScrollIndicator={false}>
 
         {/* ─── HERO SECTION ─── */}
-        <View style={{ height, width, position: 'relative', overflow: 'hidden' }}>
+        <View style={{ minHeight: heroHeight, width: '100%', position: 'relative', overflow: 'hidden' }}>
           {/* Background */}
           <Image source={require('../assets/images/bg.png')} style={styles.heroBg} />
           {/* Lighter overlay - bring back the colors */}
@@ -175,11 +177,11 @@ export default function LandingScreen({ onEnterApp }) {
           />
 
           {/* NAVBAR */}
-          <View style={[styles.navbar, glass]}>
+          <View style={[styles.navbar, glass, isCompact && { paddingHorizontal: 16, paddingVertical: 12 }, isMobile && !isCompact && { paddingHorizontal: 22 }]}>
             {/* Logo — transparent, no white box */}
             <Image
               source={require('../assets/images/logo.jpg')}
-              style={styles.logo}
+              style={[styles.logo, isCompact && { width: 132, height: 38 }, isMobile && !isCompact && { width: 144, height: 42 }]}
               resizeMode="contain"
             />
 
@@ -204,39 +206,65 @@ export default function LandingScreen({ onEnterApp }) {
               </View>
             )}
 
-            <HoverBtn style={styles.ctaNavBtn} onPress={onEnterApp}>
+            <HoverBtn style={[styles.ctaNavBtn, isCompact && { paddingHorizontal: 16, paddingVertical: 11 }]} onPress={onEnterApp}>
               <Text style={styles.ctaNavBtnText}>Get Started</Text>
             </HoverBtn>
           </View>
 
           {/* HERO COPY */}
-          <Animated.View entering={FadeIn.duration(1000)} style={styles.heroBody}>
-            <View style={[styles.heroPill, glassLight]}>
+          <Animated.View entering={FadeIn.duration(1000)} style={[styles.heroBody, isCompact && { paddingHorizontal: 20, paddingTop: 48, paddingBottom: 72 }, isMobile && !isCompact && { paddingHorizontal: 28, paddingTop: 44, paddingBottom: 64 }]}>
+            <View style={[styles.heroPill, glassLight, isCompact && { marginBottom: 20, paddingHorizontal: 14, paddingVertical: 7 }]}>
               <View style={styles.heroPillDot} />
-              <Text style={styles.heroPillText}>Nigeria's #1 Logistics Platform</Text>
+              <Text style={styles.heroPillText}>Nigeria&apos;s #1 Logistics Platform</Text>
             </View>
 
-            <Text style={styles.heroH1}>
+            <Text
+              style={[
+                styles.heroH1,
+                isCompact && { fontSize: 38, lineHeight: 42, marginBottom: 18, maxWidth: 330 },
+                isMobile && !isCompact && { fontSize: 50, lineHeight: 56, maxWidth: 680 },
+              ]}
+            >
               DELIVERING{'\n'}<Text style={styles.heroAccent}>EXCELLENCE</Text>{'\n'}ACROSS NIGERIA & BEYOND
             </Text>
-            <Text style={styles.heroSub}>
+            <Text
+              style={[
+                styles.heroSub,
+                isCompact && { fontSize: 16, lineHeight: 24, marginBottom: 28, maxWidth: 320 },
+                isMobile && !isCompact && { fontSize: 18, lineHeight: 28, maxWidth: 520, marginBottom: 34 },
+              ]}
+            >
               Fast • Secure • Reliable from Last-Mile to Heavy Haul
             </Text>
 
-            <View style={styles.heroCtas}>
-              <HoverBtn style={styles.btnPrimary} onPress={onEnterApp}>
+            <View style={[styles.heroCtas, isMobile && { width: '100%', maxWidth: isCompact ? 320 : 420 }, isCompact && { flexDirection: 'column', gap: 12, marginBottom: 28 }]}>
+              <HoverBtn style={[styles.btnPrimary, isMobile && { width: '100%', justifyContent: 'center' }]} onPress={onEnterApp}>
                 <Package color="#002B22" size={20} />
                 <Text style={styles.btnPrimaryText}>TRACK YOUR SHIPMENT</Text>
               </HoverBtn>
-              <HoverBtn style={[styles.btnSecondary, glassLight]} onPress={() => {}}>
+              <HoverBtn style={[styles.btnSecondary, glassLight, isMobile && { width: '100%' }]} onPress={() => {}}>
                 <Text style={styles.btnSecondaryText}>GET INSTANT QUOTE</Text>
                 <Text style={{ fontSize: 18 }}> 📍</Text>
               </HoverBtn>
             </View>
 
-            <View style={[styles.trustRow, glassLight]}>
+            <View
+              style={[
+                styles.trustRow,
+                glassLight,
+                isMobile && {
+                  width: '100%',
+                  maxWidth: isCompact ? 340 : 520,
+                  borderRadius: isCompact ? 24 : 30,
+                  paddingHorizontal: isCompact ? 16 : 24,
+                  paddingVertical: isCompact ? 14 : 16,
+                  gap: isCompact ? 12 : 20,
+                  justifyContent: 'center',
+                },
+              ]}
+            >
               {['24/7 Support', 'Fully Insured', '99.9% On-Time'].map((t) => (
-                <View key={t} style={styles.trustItem}>
+                <View key={t} style={[styles.trustItem, isCompact && { width: '46%', justifyContent: 'center' }]}>
                   <CheckCircle2 color="#ccfd3a" size={20} />
                   <Text style={styles.trustText}>{t}</Text>
                 </View>
@@ -245,13 +273,15 @@ export default function LandingScreen({ onEnterApp }) {
           </Animated.View>
 
           {/* Bouncing Scroll Cue */}
-          <View style={{ alignItems: 'center', paddingBottom: 28 }}>
-            <BouncingScroll />
-          </View>
+          {!isCompact ? (
+            <View style={{ alignItems: 'center', paddingBottom: isMobile ? 20 : 28 }}>
+              <BouncingScroll />
+            </View>
+          ) : null}
         </View>
 
         {/* ─── SERVICES SECTION ─── */}
-        <View style={{ minHeight: height, width, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', paddingVertical: 80 }}>
+        <View style={{ minHeight: servicesHeight, width: '100%', overflow: 'hidden', alignItems: 'center', justifyContent: 'center', paddingVertical: isCompact ? 56 : 80 }}>
           {/* Biker background - much less dark to preserve photo vibrancy */}
           <Image source={require('../assets/images/biker_bg.png')} style={styles.bikerBg} />
           {/* Subtle tinted overlay */}
@@ -260,30 +290,43 @@ export default function LandingScreen({ onEnterApp }) {
             style={StyleSheet.absoluteFillObject}
           />
 
-          <Animated.View entering={FadeInDown.duration(700)} style={styles.servicesWrap}>
+          <Animated.View entering={FadeInDown.duration(700)} style={[styles.servicesWrap, isCompact && { paddingHorizontal: 16 }]}>
             {/* Heading */}
             <Text style={styles.servicesEyebrow}>WHAT WE DO</Text>
-            <Text style={styles.servicesTitle}>Services</Text>
+            <Text style={[styles.servicesTitle, isCompact && { fontSize: 56, marginBottom: 32 }, isMobile && !isCompact && { fontSize: 68, marginBottom: 44 }]}>Services</Text>
 
             {/* Cards Row */}
-            <View style={[styles.cardsRow, isMobile && { flexDirection: 'column' }]}>
-              <ServiceCard source={require('../assets/images/card 1.jpg')} />
-              <ServiceCard source={require('../assets/images/card2.jpg')} />
-              <ServiceCard source={require('../assets/images/card 3.jpg')} />
-              <ServiceCard source={require('../assets/images/card 4.jpg')} />
+            <View style={[styles.cardsRow, isMobile && { flexDirection: 'column', width: '100%' }, isCompact && { gap: 16 }]}>
+              <ServiceCard source={require('../assets/images/card 1.jpg')} cardWidth={cardWidth} />
+              <ServiceCard source={require('../assets/images/card2.jpg')} cardWidth={cardWidth} />
+              <ServiceCard source={require('../assets/images/card 3.jpg')} cardWidth={cardWidth} />
+              <ServiceCard source={require('../assets/images/card 4.jpg')} cardWidth={cardWidth} />
             </View>
 
             {/* Stats Bar */}
-            <View style={[styles.statsBar, glass]}>
+            <View
+              style={[
+                styles.statsBar,
+                glass,
+                isMobile && {
+                  width: '100%',
+                  maxWidth: isCompact ? 340 : 720,
+                  gap: isCompact ? 18 : 28,
+                  paddingHorizontal: isCompact ? 18 : 28,
+                  paddingVertical: isCompact ? 22 : 24,
+                  marginTop: isCompact ? 36 : 48,
+                },
+              ]}
+            >
               {[
                 { val: '10K+', lbl: 'Shipments Delivered' },
                 { val: 'All 36', lbl: 'States Covered' },
                 { val: '99.9%', lbl: 'On-Time Delivery' },
                 { val: '24/7', lbl: 'Customer Support' },
               ].map((s) => (
-                <View key={s.lbl} style={styles.statCol}>
-                  <Text style={styles.statVal}>{s.val}</Text>
-                  <Text style={styles.statLbl}>{s.lbl}</Text>
+                <View key={s.lbl} style={[styles.statCol, isCompact && { width: '46%' }]}>
+                  <Text style={[styles.statVal, isCompact && { fontSize: 28 }]}>{s.val}</Text>
+                  <Text style={[styles.statLbl, isCompact && { textAlign: 'center' }]}>{s.lbl}</Text>
                 </View>
               ))}
             </View>
