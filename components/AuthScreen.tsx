@@ -191,7 +191,7 @@ export default function AuthScreen({ onAuthenticated }) {
 
       <View style={[styles.authContainer, isMobile && { flexDirection: 'column' }]}>
         {/* ── LEFT PANEL ── */}
-        <Animated.View entering={FadeIn.duration(800)} style={styles.leftPanel}>
+        <Animated.View entering={FadeIn.duration(800)} style={[styles.leftPanel, isMobile && styles.leftPanelMobile]}>
           <Image source={require('../assets/images/logo.jpg')} style={styles.authLogo} resizeMode="contain" />
           <Text style={styles.authBrandTitle}>RENAX Logistics</Text>
           <Text style={styles.authBrandSub}>Nigeria's fastest growing{'\n'}logistics platform.</Text>
@@ -216,7 +216,7 @@ export default function AuthScreen({ onAuthenticated }) {
         </Animated.View>
 
         {/* ── RIGHT PANEL ── */}
-        <Animated.View entering={FadeInDown.duration(700)} style={[styles.rightPanel, glass]}>
+        <Animated.View entering={FadeInDown.duration(700)} style={[styles.rightPanel, glass, isMobile && styles.rightPanelMobile]}>
           {/* Tabs */}
           <View style={styles.authTabs}>
             <Pressable onPress={() => setMode('signin')} style={[styles.authTab, mode === 'signin' && styles.authTabActive]}>
@@ -359,8 +359,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: 'rgba(0,40,26,0.6)',
   },
+  leftPanelMobile: {
+    paddingHorizontal: 20,
+    paddingTop: 48,
+    paddingBottom: 24,
+  },
   authLogo: {
-    width: 400,
+    width: '100%',
+    maxWidth: 400,
     height: 140,
     marginBottom: 24,
   },
@@ -399,6 +405,15 @@ const styles = StyleSheet.create({
     borderLeftWidth: 1,
     borderLeftColor: 'rgba(255,255,255,0.06)',
     justifyContent: 'center',
+  },
+  rightPanelMobile: {
+    width: '100%',
+    paddingHorizontal: 20,
+    paddingTop: 28,
+    paddingBottom: 36,
+    borderLeftWidth: 0,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.06)',
   },
   authTabs: {
     flexDirection: 'row',

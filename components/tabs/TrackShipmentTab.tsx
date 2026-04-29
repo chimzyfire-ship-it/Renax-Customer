@@ -33,6 +33,7 @@ export default function TrackShipmentTab({ initialTrackingId = '', autoTrackSign
   useTranslation();
   const { width } = useWindowDimensions();
   const isMobile = width < 1024;
+  const isCompact = width < 640;
 
   const [searchQuery, setSearchQuery]     = useState('');
   const [shipmentData, setShipmentData]   = useState<any>(null);
@@ -144,10 +145,10 @@ export default function TrackShipmentTab({ initialTrackingId = '', autoTrackSign
   const isDelivered = currentStage === 'delivered' || shipmentData?.status?.toLowerCase() === 'delivered';
 
   return (
-    <ScrollView style={styles.root} contentContainerStyle={{ padding: 32, paddingBottom: 60 }}>
+    <ScrollView style={styles.root} contentContainerStyle={{ padding: isCompact ? 16 : isMobile ? 20 : 32, paddingBottom: 60 }}>
 
       {/* ── Header ── */}
-      <View style={styles.header}>
+      <View style={[styles.header, isCompact && { flexDirection: 'column', alignItems: 'stretch' }]}>
         <View style={{ flex: 1 }}>
           <Text style={styles.pageTitle}>
             {shipmentData ? `Tracking ${shipmentData.tracking_id}` : 'Shipment Tracking'}
@@ -160,7 +161,7 @@ export default function TrackShipmentTab({ initialTrackingId = '', autoTrackSign
         </View>
 
         {/* Search */}
-        <View style={styles.searchBar}>
+        <View style={[styles.searchBar, isCompact && styles.searchBarCompact]}>
           <Search color="#004d3d" size={18} />
           <TextInput
             style={styles.searchInput}
@@ -210,7 +211,7 @@ export default function TrackShipmentTab({ initialTrackingId = '', autoTrackSign
             ].map((card, i) => {
               const Icon = card.icon;
               return (
-                <Animated.View key={card.label} entering={FadeInDown.delay(i * 80).duration(400)} style={styles.statCard}>
+                <Animated.View key={card.label} entering={FadeInDown.delay(i * 80).duration(400)} style={[styles.statCard, isCompact && styles.statCardCompact]}>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.statLabel}>{card.label}</Text>
                     <Text style={[styles.statValue, card.accent && { color: statusColor }]}>{card.value}</Text>
@@ -222,7 +223,7 @@ export default function TrackShipmentTab({ initialTrackingId = '', autoTrackSign
           </View>
 
           {/* ── Progress bar ── */}
-          <View style={styles.progressWrap}>
+          <View style={[styles.progressWrap, isCompact && styles.progressWrapCompact]}>
             <View style={styles.progressTrack}>
               <View style={[styles.progressFill, { width: `${progress}%` as any, backgroundColor: statusColor }]} />
             </View>
@@ -332,7 +333,7 @@ export default function TrackShipmentTab({ initialTrackingId = '', autoTrackSign
             </View>
 
             {/* Details panel */}
-            <View style={styles.detailsCard}>
+            <View style={[styles.detailsCard, isCompact && styles.detailsCardCompact]}>
               <Text style={styles.detailsTitle}>Shipment Info</Text>
               <View style={styles.detailsGrid}>
                 {[
@@ -401,6 +402,7 @@ const styles = StyleSheet.create({
   pageTitle: { fontFamily: 'PlusJakartaSans_7', fontSize: 24, color: '#111', marginBottom: 4 },
   pageSub: { fontFamily: 'Outfit_4', fontSize: 14, color: '#666' },
   searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 10, paddingLeft: 14, borderWidth: 1, borderColor: '#e0e0e0', gap: 8, minWidth: 340 },
+  searchBarCompact: { minWidth: 0, width: '100%' },
   searchInput: { flex: 1, fontFamily: 'Outfit_4', fontSize: 14, color: '#333', paddingVertical: 10 },
   searchBtn: { backgroundColor: '#004d3d', paddingHorizontal: 16, paddingVertical: 12, borderTopRightRadius: 10, borderBottomRightRadius: 10 },
   searchBtnText: { fontFamily: 'Outfit_7', fontSize: 13, color: '#ccfd3a', letterSpacing: 1 },
@@ -411,9 +413,11 @@ const styles = StyleSheet.create({
   emptySub: { fontFamily: 'Outfit_4', fontSize: 14, color: '#888', textAlign: 'center', maxWidth: 400, lineHeight: 22 },
   statRow: { flexDirection: 'row', gap: 16, marginBottom: 16 },
   statCard: { flex: 1, minWidth: 160, backgroundColor: '#004d3d', borderRadius: 14, padding: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  statCardCompact: { minWidth: '100%' as any },
   statLabel: { fontFamily: 'Outfit_4', fontSize: 12, color: 'rgba(255,255,255,0.6)', marginBottom: 4 },
   statValue: { fontFamily: 'PlusJakartaSans_7', fontSize: 18, color: '#fff' },
   progressWrap: { flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 12 },
+  progressWrapCompact: { flexWrap: 'wrap' },
   progressTrack: { flex: 1, height: 8, backgroundColor: '#e5e7eb', borderRadius: 4, overflow: 'hidden' },
   progressFill: { height: '100%', borderRadius: 4 },
   progressLabel: { fontFamily: 'Outfit_6', fontSize: 13, color: '#555', minWidth: 90 },
@@ -444,6 +448,7 @@ const styles = StyleSheet.create({
   tlBadge: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4, alignSelf: 'flex-start' },
   tlBadgeText: { fontFamily: 'Outfit_6', fontSize: 11 },
   detailsCard: { flex: 1, backgroundColor: '#fff', borderRadius: 16, padding: 24, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 12, minWidth: 260 },
+  detailsCardCompact: { minWidth: 0, padding: 18 },
   detailsTitle: { fontFamily: 'PlusJakartaSans_7', fontSize: 18, color: '#111', marginBottom: 20 },
   detailsGrid: { gap: 14, marginBottom: 24 },
   detailItem: { gap: 3 },
