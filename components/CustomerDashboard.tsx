@@ -66,6 +66,7 @@ export default function CustomerDashboard({ userState = 'Lagos', userName = 'Ade
   const { t } = useTranslation();
   const { width } = useWindowDimensions();
   const isMobile = width < 900;
+  const isCompact = width < 640;
   const [activeNav, setActiveNav] = useState('dashboard');
   const [collapsed, setCollapsed] = useState(false);
   const [customerId, setCustomerId] = useState<string | null>(null);
@@ -208,8 +209,8 @@ export default function CustomerDashboard({ userState = 'Lagos', userName = 'Ade
   );
 
   const renderTopBar = () => (
-    <View style={styles.topBar}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+      <View style={[styles.topBar, isCompact && styles.topBarCompact]}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, flex: isCompact ? 1 : undefined, minWidth: 0 }}>
         <Pressable onPress={() => setCollapsed((prev) => !prev)} style={styles.menuToggle}>
           {(collapsed || isMobile) ? <ChevronRight color="#004d3d" size={24} /> : <ChevronLeft color="#004d3d" size={24} />}
         </Pressable>
@@ -218,7 +219,7 @@ export default function CustomerDashboard({ userState = 'Lagos', userName = 'Ade
           <Text style={styles.welcomeSub} numberOfLines={isMobile ? 2 : 1}>{t('dash.subtitle')} {userState ? `Serving ${userState}.` : ''}</Text>
         </View>
       </View>
-      <View style={styles.topBarRight}>
+      <View style={[styles.topBarRight, isCompact && styles.topBarRightCompact]}>
         <View style={styles.avatarWrap}>
           <View style={styles.avatar}>
             <Text style={{ color: '#fff', fontFamily: 'Outfit_7', fontSize: 16 }}>{userName.charAt(0)}</Text>
@@ -336,7 +337,7 @@ export default function CustomerDashboard({ userState = 'Lagos', userName = 'Ade
           </View>
 
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            <View style={{ minWidth: isMobile ? 600 : '100%' }}>
+            <View style={{ minWidth: isCompact ? 520 : isMobile ? 600 : '100%' }}>
               <View style={styles.bookingsHeader}>
                 {['Date', 'Order ID', 'Destination', 'Status', 'Actions'].map((header) => (
                   <Text key={header} style={styles.bookingsHeaderCell}>{header}</Text>
@@ -491,10 +492,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 28,
+    gap: 14,
+    flexWrap: 'wrap',
+  },
+  topBarCompact: {
+    alignItems: 'stretch',
   },
   welcomeText: { fontFamily: 'PlusJakartaSans_7', fontSize: 26, color: '#121212' },
   welcomeSub: { fontFamily: 'Outfit_4', fontSize: 15, color: '#666', marginTop: 4, maxWidth: 560 },
   topBarRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  topBarRightCompact: { width: '100%', justifyContent: 'flex-end' },
   avatarWrap: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   avatar: {
     width: 38,
