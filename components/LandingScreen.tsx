@@ -209,12 +209,16 @@ export default function LandingScreen({ onEnterApp, isLoggedIn = false }) {
             style={StyleSheet.absoluteFillObject}
           />
 
-          {/* NAVBAR */}
-          <View style={[styles.navbar, glass, isCompact && { paddingHorizontal: 16, paddingVertical: 12 }, isMobile && !isCompact && { paddingHorizontal: 22 }]}>
-            {/* Logo — transparent, no white box */}
+          {/* NAVBAR - zIndex ensures dropdowns appear and click over the hero text */}
+          <View style={[styles.navbar, { zIndex: 9999, elevation: 99 }, glass, isCompact && { paddingHorizontal: 16, paddingVertical: 12 }, isMobile && !isCompact && { paddingHorizontal: 22 }]}>
+            {/* Logo — super huge but aesthetic */}
             <Image
               source={require('../assets/images/logo.jpg')}
-              style={[styles.logo, isCompact && { width: 132, height: 38 }, isMobile && !isCompact && { width: 144, height: 42 }]}
+              style={[
+                styles.logo,
+                isCompact && { width: 180, height: 50 },
+                isMobile && !isCompact && { width: 200, height: 60 }
+              ]}
               resizeMode="contain"
             />
 
@@ -406,8 +410,8 @@ const styles = StyleSheet.create({
   },
   // Logo — use mixBlendMode on web to remove white background visually
   logo: {
-    height: 46,
-    width: 160,
+    height: 70,
+    width: 240,
     ...(Platform.OS === 'web' ? { mixBlendMode: 'screen' } : {}),
   },
   navLinks: {
@@ -448,28 +452,29 @@ const styles = StyleSheet.create({
   // Dropdown — FULLY OPAQUE, no glass effect, high z-index so it's always readable
   dropdown: {
     position: 'absolute',
-    top: 52,
+    top: 60,
     left: -10,
-    width: 290,
-    backgroundColor: '#021f14', // solid, no transparency
+    width: 300,
+    backgroundColor: '#04150d', // dark opaque green/black
     borderRadius: 16,
     borderWidth: 1.5,
     borderColor: 'rgba(204, 253, 58, 0.4)',
     paddingVertical: 10,
-    zIndex: 9999,
+    zIndex: 99999,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 20 },
-    shadowOpacity: 0.9,
+    shadowOpacity: 1,
     shadowRadius: 40,
-    ...(Platform.OS === 'web' ? { boxShadow: '0 20px 60px rgba(0,0,0,0.95)' } : {}),
+    elevation: 50,
+    ...(Platform.OS === 'web' ? { boxShadow: '0 20px 60px rgba(0,0,0,1)' } : {}),
   },
   dropArrow: {
     position: 'absolute',
     top: -6,
     left: 28,
-    width: 12,
-    height: 12,
-    backgroundColor: '#041910',
+    width: 14,
+    height: 14,
+    backgroundColor: '#04150d',
     borderTopWidth: 1,
     borderLeftWidth: 1,
     borderColor: 'rgba(204,253,58,0.3)',
