@@ -65,18 +65,26 @@ const NAV_ITEMS = [
 type CustomerDashboardProps = {
   userState?: string;
   userName?: string;
+  initialNav?: string;
 };
 
 const formatAmount = (amount: number | null | undefined) =>
   `₦${Number(amount ?? 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
 
-export default function CustomerDashboard({ userState = 'Lagos', userName = 'Adewale' }: CustomerDashboardProps) {
+export default function CustomerDashboard({ userState = 'Lagos', userName = 'Adewale', initialNav = 'dashboard' }: CustomerDashboardProps) {
   const { t } = useTranslation();
   const { width } = useWindowDimensions();
   const isMobile = width < 900;
   const isCompact = width < 640;
   const isTiny = width < 420;
-  const [activeNav, setActiveNav] = useState('dashboard');
+
+  // Map landing nav keys to actual dashboard nav keys
+  const resolveNav = (nav: string) => {
+    const map: Record<string, string> = { book: 'create', wallet: 'payment', history: 'history', agro: 'agro' };
+    return map[nav] ?? nav;
+  };
+
+  const [activeNav, setActiveNav] = useState(() => resolveNav(initialNav));
   const [desktopCollapsed, setDesktopCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [customerId, setCustomerId] = useState<string | null>(null);

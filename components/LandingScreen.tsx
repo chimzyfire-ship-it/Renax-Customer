@@ -48,19 +48,20 @@ const ServiceCard = ({ source, cardWidth = 260 }) => {
 };
 
 // === DROPDOWN MENU ITEM ===
-const DropItem = ({ icon: Icon, label, desc }) => {
+const DropItem = ({ icon: Icon, label, desc, onPress }) => {
   const [hovered, setHovered] = useState(false);
 
   return (
     <Pressable
       onHoverIn={() => setHovered(true)}
       onHoverOut={() => setHovered(false)}
+      onPress={onPress}
       style={[styles.dropItem, hovered && styles.dropItemHover]}
     >
       <View style={styles.dropIconWrap}>
         <Icon color="#ccfd3a" size={18} />
       </View>
-      <View>
+      <View style={{ flex: 1 }}>
         <Text style={styles.dropLabel}>{label}</Text>
         <Text style={styles.dropDesc}>{desc}</Text>
       </View>
@@ -82,6 +83,24 @@ const BouncingScroll = () => {
   );
 };
 
+// Tab → CustomerDashboard nav key mapping
+// These keys map to the `activeNav` state in CustomerDashboard
+const NAV_ROUTE_MAP: Record<string, string> = {
+  'Book a Shipment':     'book',
+  'Freight & Bulk Cargo':'book',
+  'Premium Express':     'book',
+  'Agro Transport':      'agro',
+  'Live Tracking':       'track',
+  'Delivery History':    'history',
+  'Analytics':           'dashboard',
+  'Live Chat':           'support',
+  'Insurance Claims':    'support',
+  'FAQs':                'support',
+  'My Profile':          'settings',
+  'Billing':             'wallet',
+  'Security':            'settings',
+};
+
 // === NAV ITEMS CONFIG ===
 const NAV = [
   {
@@ -91,6 +110,7 @@ const NAV = [
       { icon: Package, label: 'Book a Shipment', desc: 'Send parcels anywhere in Nigeria' },
       { icon: Truck, label: 'Freight & Bulk Cargo', desc: 'Large-scale haulage & interstate' },
       { icon: Star, label: 'Premium Express', desc: 'Same-day priority delivery' },
+      { icon: Truck, label: 'Agro Transport', desc: 'Farm produce & agro logistics' },
     ]
   },
   {
@@ -123,7 +143,7 @@ const NAV = [
 ];
 
 // === MAIN COMPONENT ===
-export default function LandingScreen({ onEnterApp }) {
+export default function LandingScreen({ onEnterApp, isLoggedIn = false }) {
   const { width, height } = useWindowDimensions();
   const isMobile = width < 900;
   const isCompact = width < 640;
@@ -150,13 +170,26 @@ export default function LandingScreen({ onEnterApp }) {
 
   const toggleMenu = (label) => setOpenMenu(prev => prev === label ? null : label);
 
+  // Called when user clicks a dropdown item — passes target nav key to parent
+  const handleNavItem = (itemLabel: string) => {
+    setOpenMenu(null);
+    const targetNav = NAV_ROUTE_MAP[itemLabel] || 'dashboard';
+    onEnterApp(targetNav);
+  };
+
   const renderDropdown = (nav) => {
     if (openMenu !== nav.label) return null;
     return (
-      <Animated.View entering={FadeInDown.duration(200)} style={[styles.dropdown, glass]}>
+      <Animated.View entering={FadeInDown.duration(200)} style={styles.dropdown}>
         <View style={styles.dropArrow} />
         {nav.items.map(item => (
-          <DropItem key={item.label} icon={item.icon} label={item.label} desc={item.desc} />
+          <DropItem
+            key={item.label}
+            icon={item.icon}
+            label={item.label}
+            desc={item.desc}
+            onPress={() => handleNavItem(item.label)}
+          />
         ))}
       </Animated.View>
     );
@@ -206,8 +239,17 @@ export default function LandingScreen({ onEnterApp }) {
               </View>
             )}
 
-            <HoverBtn style={[styles.ctaNavBtn, isCompact && { paddingHorizontal: 16, paddingVertical: 11 }]} onPress={onEnterApp}>
-              <Text style={styles.ctaNavBtnText}>Get Started</Text>
+            <HoverBtn
+              style={[
+                styles.ctaNavBtn,
+                isCompact && { paddingHorizontal: 16, paddingVertical: 11 },
+                isLoggedIn && { backgroundColor: '#004d3d', borderWidth: 1.5, borderColor: '#ccfd3a' }
+              ]}
+              onPress={() => onEnterApp('dashboard')}
+            >
+              <Text style={[styles.ctaNavBtnText, isLoggedIn && { color: '#ccfd3a' }]}>
+                {isLoggedIn ? 'Dashboard' : 'Get Started'}
+              </Text>
             </HoverBtn>
           </View>
 
@@ -233,14 +275,14 @@ export default function LandingScreen({ onEnterApp }) {
             </Text>
 
             <View style={[styles.heroCtas, isMobile && { width: '100%', maxWidth: isCompact ? 320 : 420 }, isCompact && { flexDirection: 'column', gap: 12, marginBottom: 28 }]}>
-              <HoverBtn style={[styles.btnPrimary, isMobile && { width: '100%', justifyContent: 'center' }]} onPress={onEnterApp}>
-                <Package color="#002B22" size={20} />
-                <Text style={styles.btnPrimaryText}>TRACK YOUR SHIPMENT</Text>
-              </HoverBtn>
-              <HoverBtn style={[styles.btnSecondary, glassLight, isMobile && { width: '100%' }]} onPress={() => {}}>
-                <Text style={styles.btnSecondaryText}>GET INSTANT QUOTE</Text>
-                <Text style={{ fontSize: 18 }}> 📍</Text>
-              </HoverBtn>
+              <HoverBtn style={[styles.btnPrimary, isMobile && { width: '100%', justifyContent: 'center' }]} onPress={() => onEnterApp('track')}>
+              <Package color="#002B22" size={20} />
+              <Text style={styles.btnPrimaryText}>TRACK YOUR SHIPMENT</Text>
+            </HoverBtn>
+            <HoverBtn style={[styles.btnSecondary, glassLight, isMobile && { width: '100%' }]} onPress={() => onEnterApp('book')}>
+              <Text style={styles.btnSecondaryText}>GET INSTANT QUOTE</Text>
+              <Text style={{ fontSize: 18 }}> 📍</Text>
+            </HoverBtn>
             </View>
 
             <View
@@ -403,23 +445,23 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
 
-  // Dropdown — FULLY OPAQUE so menus are always readable
+  // Dropdown — FULLY OPAQUE, no glass effect, high z-index so it's always readable
   dropdown: {
     position: 'absolute',
     top: 52,
     left: -10,
-    width: 280,
-    backgroundColor: '#041910', // Fully opaque — no transparency issues
+    width: 290,
+    backgroundColor: '#021f14', // solid, no transparency
     borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(204, 253, 58, 0.3)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(204, 253, 58, 0.4)',
     paddingVertical: 10,
     zIndex: 9999,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 20 },
-    shadowOpacity: 0.8,
+    shadowOpacity: 0.9,
     shadowRadius: 40,
-    ...(Platform.OS === 'web' ? { boxShadow: '0 20px 60px rgba(0,0,0,0.85)' } : {}),
+    ...(Platform.OS === 'web' ? { boxShadow: '0 20px 60px rgba(0,0,0,0.95)' } : {}),
   },
   dropArrow: {
     position: 'absolute',

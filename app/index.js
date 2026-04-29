@@ -148,6 +148,8 @@ export default function App() {
   const [loading, setLoading] = useState(!isWebDemo);
   const [showLanding, setShowLanding] = useState(isWebDemo);
   const [showAuth, setShowAuth] = useState(false); // web auth gate
+  const [targetNav, setTargetNav] = useState('dashboard'); // deep-link target from landing
+  const [isWebLoggedIn, setIsWebLoggedIn] = useState(false); // tracks if user has an active session on web
   const [userProfile, setUserProfile] = useState({ state: 'Lagos', name: 'Adewale' });
   const [toast, setToast] = useState({ visible: false, message: '', type: 'info' });
 
@@ -174,6 +176,16 @@ export default function App() {
     });
   }, []);
 
+  // On web: check if user already has an active Supabase session so landing shows "Dashboard" button
+  useEffect(() => {
+    if (!isWebDemo) return;
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        setIsWebLoggedIn(true);
+      }
+    });
+  }, [isWebDemo]);
+
   if (loading) return (
     <View style={styles.loadingScreen}>
         <Text style={{fontSize: 50, marginBottom: 20}}>📦</Text>
@@ -185,12 +197,40 @@ export default function App() {
   // Web: Show Landing → Auth → Dashboard
   if (isWebDemo) {
     if (showLanding && !showAuth) {
-      return <LandingScreen onEnterApp={() => { setShowLanding(false); setShowAuth(true); }} />;
+      return (
+        <LandingScreen
+          isLoggedIn={isWebLoggedIn}
+          onEnterApp={(navTarget = 'dashboard') => {
+            setTargetNav(navTarget);
+            if (isWebLoggedIn) {
+              // Already logged in — skip auth, go straight to dashboard
+              setShowLanding(false);
+            } else {
+              setShowLanding(false);
+              setShowAuth(true);
+            }
+          }}
+        />
+      );
     }
     if (showAuth) {
-      return <AuthScreenNew onAuthenticated={(profile) => { setUserProfile(profile); setShowAuth(false); }} />;
+      return (
+        <AuthScreenNew
+          onAuthenticated={(profile) => {
+            setUserProfile(profile);
+            setIsWebLoggedIn(true);
+            setShowAuth(false);
+          }}
+        />
+      );
     }
-    return <CustomerDashboard userState={userProfile.state} userName={userProfile.name || 'Adewale'} />;
+    return (
+      <CustomerDashboard
+        userState={userProfile.state}
+        userName={userProfile.name || 'Adewale'}
+        initialNav={targetNav}
+      />
+    );
   }
 
   if (!session) return <AuthScreen showToast={showToast} />;
