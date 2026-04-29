@@ -404,7 +404,7 @@ export default function PaymentMethodsTab({ customerId }: PaymentMethodsTabProps
                   <Text style={styles.walletBadgeText}>RENAX Wallet</Text>
                 </View>
                 <Text style={styles.walletBalanceLabel}>Available Balance</Text>
-                <Text style={styles.walletBalance}>{formatAmount(wallet?.balance)}</Text>
+                <Text style={styles.walletBalance} adjustsFontSizeToFit numberOfLines={1}>{formatAmount(wallet?.balance)}</Text>
                 <Text style={styles.walletHint}>
                   Use this balance at checkout by selecting `RENAX Wallet` when creating a shipment.
                 </Text>
@@ -462,9 +462,9 @@ export default function PaymentMethodsTab({ customerId }: PaymentMethodsTabProps
                           <Banknote color="#004d3d" size={18} />
                         )}
                       </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.methodName}>{method.label}</Text>
-                        <Text style={styles.methodSub}>{formatMethodDetail(method)}</Text>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={styles.methodName} numberOfLines={1}>{method.label}</Text>
+                        <Text style={styles.methodSub} numberOfLines={1}>{formatMethodDetail(method)}</Text>
                       </View>
                     </View>
 
@@ -506,9 +506,9 @@ export default function PaymentMethodsTab({ customerId }: PaymentMethodsTabProps
                 ) : (
                   bankAccounts.map((account) => (
                     <View key={account.id} style={styles.bankCard}>
-                      <View>
-                        <Text style={styles.bankName}>{account.bank_name}</Text>
-                        <Text style={styles.bankSub}>
+                      <View style={{ flex: 1, minWidth: 0, paddingRight: 8 }}>
+                        <Text style={styles.bankName} numberOfLines={1}>{account.bank_name}</Text>
+                        <Text style={styles.bankSub} numberOfLines={1}>
                           {account.account_name} •••• {account.account_number_last4}
                         </Text>
                       </View>
@@ -542,12 +542,12 @@ export default function PaymentMethodsTab({ customerId }: PaymentMethodsTabProps
               ) : (
                 transactions.map((transaction) => (
                   <View key={transaction.id} style={styles.transactionRow}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.transactionTitle}>{transactionLabel(transaction)}</Text>
-                      <Text style={styles.transactionSub}>{transaction.description || transaction.reference}</Text>
+                    <View style={{ flex: 1, paddingRight: 8 }}>
+                      <Text style={styles.transactionTitle} numberOfLines={1}>{transactionLabel(transaction)}</Text>
+                      <Text style={styles.transactionSub} numberOfLines={2}>{transaction.description || transaction.reference}</Text>
                     </View>
-                    <View style={{ alignItems: 'flex-end' }}>
-                      <Text style={styles.transactionAmount}>{formatAmount(transaction.amount)}</Text>
+                    <View style={{ alignItems: 'flex-end', flexShrink: 0, maxWidth: '40%' }}>
+                      <Text style={styles.transactionAmount} adjustsFontSizeToFit numberOfLines={1}>{formatAmount(transaction.amount)}</Text>
                       <Text style={[styles.transactionStatus, { color: transactionTone(transaction.status) }]}>
                         {transaction.status.toUpperCase()}
                       </Text>
@@ -909,7 +909,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 12,
     alignItems: 'center',
-    flexWrap: 'wrap',
   },
   bankName: { fontFamily: 'PlusJakartaSans_6', fontSize: 15, color: '#111', marginBottom: 4 },
   bankSub: { fontFamily: 'Outfit_4', fontSize: 13, color: '#666' },

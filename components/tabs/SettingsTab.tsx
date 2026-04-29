@@ -218,8 +218,8 @@ export default function SettingsTab({ customerId }: SettingsTabProps) {
       {flashMessage ? <View style={styles.successBanner}><Text style={styles.successText}>{flashMessage}</Text></View> : null}
       {flashError ? <View style={styles.errorBanner}><Text style={styles.errorText}>{flashError}</Text></View> : null}
 
-      <View style={styles.mainGrid}>
-        <Animated.View entering={FadeInDown.delay(100).duration(400)} style={[styles.leftCol, isMobile && { minWidth: 0, maxWidth: '100%' as any, width: '100%' }]}>
+      <View style={[styles.mainGrid, isMobile && { flexDirection: 'column', flexWrap: 'nowrap' }]}>
+        <Animated.View entering={FadeInDown.delay(100).duration(400)} style={[styles.leftCol, isMobile && { flex: undefined, minWidth: 0, maxWidth: '100%', width: '100%' }]}>
           <View style={styles.menuCard}>
             {menuItems.map((item, index) => (
               <Pressable
@@ -242,7 +242,7 @@ export default function SettingsTab({ customerId }: SettingsTabProps) {
           </Pressable>
         </Animated.View>
 
-        <Animated.View entering={FadeInDown.delay(200).duration(400)} style={[styles.rightCol, isMobile && { minWidth: 0, width: '100%' }]}>
+        <Animated.View entering={FadeInDown.delay(200).duration(400)} style={[styles.rightCol, isMobile && { flex: undefined, minWidth: 0, width: '100%' }]}>
           {isLoading ? (
             <View style={[styles.card, isCompact && { padding: 18 }]}>
               <Text style={styles.pageSub}>Loading customer settings...</Text>
