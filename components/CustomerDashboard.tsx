@@ -16,7 +16,6 @@ import { Outfit_400Regular, Outfit_600SemiBold, Outfit_700Bold } from '@expo-goo
 import {
   Bell,
   Calendar,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Clock,
@@ -350,12 +349,6 @@ export default function CustomerDashboard({ userState = 'Lagos', userName = 'Ade
         </View>
       </View>
       <View style={[styles.topBarRight, isCompact && styles.topBarRightCompact]}>
-        <View style={styles.avatarWrap}>
-          <View style={styles.avatar}>
-            <Text style={{ color: '#fff', fontFamily: 'Outfit_7', fontSize: 16 }}>{userName.charAt(0)}</Text>
-          </View>
-          <ChevronDown color="#666" size={16} />
-        </View>
         <Pressable style={styles.bellWrap} onPress={handleOpenNotifications}>
           <Bell color="#444" size={22} />
           <View style={[styles.bellBadge, unreadNotifications === 0 && styles.bellBadgeMuted]}>
@@ -688,15 +681,6 @@ const styles = StyleSheet.create({
   welcomeSub: { fontFamily: 'Outfit_4', fontSize: 15, color: '#666', marginTop: 4, maxWidth: 560 },
   topBarRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   topBarRightCompact: { width: '100%', justifyContent: 'flex-end' },
-  avatarWrap: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  avatar: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: '#004d3d',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   bellWrap: { position: 'relative', width: 38, height: 38, alignItems: 'center', justifyContent: 'center' },
   bellBadge: {
     position: 'absolute',
