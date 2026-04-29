@@ -189,7 +189,8 @@ export default function AuthScreen({ onAuthenticated }) {
         style={StyleSheet.absoluteFillObject as any}
       />
 
-      <View style={[styles.authContainer, isMobile && { flexDirection: 'column' }]}>
+      <ScrollView contentContainerStyle={{ flexGrow: 1 }} showsVerticalScrollIndicator={false} bounces={false}>
+      <View style={[styles.authContainer, isMobile && { flexDirection: 'column', flex: undefined }]}>
         {/* ── LEFT PANEL ── */}
         <Animated.View entering={FadeIn.duration(800)} style={[styles.leftPanel, isMobile && styles.leftPanelMobile]}>
           <Image source={require('../assets/images/logo.jpg')} style={styles.authLogo} resizeMode="contain" />
@@ -344,6 +345,7 @@ export default function AuthScreen({ onAuthenticated }) {
           </ScrollView>
         </Animated.View>
       </View>
+      </ScrollView>
     </View>
   );
 }
@@ -360,6 +362,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,40,26,0.6)',
   },
   leftPanelMobile: {
+    flex: 0,
     paddingHorizontal: 20,
     paddingTop: 48,
     paddingBottom: 24,

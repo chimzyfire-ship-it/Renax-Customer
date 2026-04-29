@@ -240,7 +240,7 @@ export default function CustomerDashboard({ userState = 'Lagos', userName = 'Ade
 
   if (!fontsLoaded) return null;
 
-  const sidebarWidth = isMobile ? Math.min(Math.max(width * 0.82, 260), 300) : (desktopCollapsed ? 76 : 240);
+  const sidebarWidth = isMobile ? Math.min(width * 0.8, 260) : (desktopCollapsed ? 76 : 240);
   const sidebarWebStyle = Platform.OS === 'web'
     ? {
         transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
@@ -274,19 +274,24 @@ export default function CustomerDashboard({ userState = 'Lagos', userName = 'Ade
           shadowOffset: { width: 4, height: 0 },
         }
       ]}>
-        <View style={[styles.sidebarLogo, (!isMobile && desktopCollapsed) && { padding: 12 }]}>
-          {(!isMobile && desktopCollapsed) ? (
-            <Image
-              source={require('../assets/images/logo.jpg')}
-              style={{ width: 44, height: 44, borderRadius: 8 }}
-              resizeMode="cover"
-            />
-          ) : (
+      <View style={[styles.sidebarLogo, (!isMobile && desktopCollapsed) && { padding: 12 }, isMobile && { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingRight: 16 }]}>
+        {(!isMobile && desktopCollapsed) ? (
           <Image
             source={require('../assets/images/logo.jpg')}
-            style={styles.sidebarLogoImg}
+            style={{ width: 44, height: 44, borderRadius: 8 }}
             resizeMode="cover"
           />
+        ) : (
+          <Image
+            source={require('../assets/images/logo.jpg')}
+            style={[styles.sidebarLogoImg, isMobile && { width: 140 }]}
+            resizeMode="contain"
+          />
+        )}
+        {isMobile && (
+          <Pressable onPress={() => setMobileMenuOpen(false)} style={{ padding: 8 }}>
+            <ChevronLeft color="#fff" size={24} />
+          </Pressable>
         )}
       </View>
 
