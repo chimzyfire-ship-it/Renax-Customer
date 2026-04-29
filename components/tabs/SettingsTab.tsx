@@ -98,7 +98,10 @@ export default function SettingsTab({ customerId }: SettingsTabProps) {
       } catch (error: any) {
         console.error('Failed to load customer settings', error);
         const msg = error?.message || String(error);
-        setFlashError(`${msg} — Settings data is unavailable until the customer migration is applied.`);
+        const isSchemaError = msg.toLowerCase().includes('profiles') || msg.toLowerCase().includes('schema') || msg.toLowerCase().includes('relation');
+        setFlashError(isSchemaError
+          ? 'Your profile is being set up. Please complete a shipment booking first to activate settings.'
+          : `${msg} — Settings data is unavailable until the customer migration is applied.`);
       } finally {
         setIsLoading(false);
       }

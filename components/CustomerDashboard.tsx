@@ -65,18 +65,26 @@ const NAV_ITEMS = [
 type CustomerDashboardProps = {
   userState?: string;
   userName?: string;
+  initialNav?: string;
 };
 
 const formatAmount = (amount: number | null | undefined) =>
   `₦${Number(amount ?? 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
 
-export default function CustomerDashboard({ userState = 'Lagos', userName = 'Adewale' }: CustomerDashboardProps) {
+export default function CustomerDashboard({ userState = 'Lagos', userName = 'Adewale', initialNav = 'dashboard' }: CustomerDashboardProps) {
   const { t } = useTranslation();
   const { width } = useWindowDimensions();
   const isMobile = width < 900;
   const isCompact = width < 640;
   const isTiny = width < 420;
-  const [activeNav, setActiveNav] = useState('dashboard');
+
+  // Map landing nav keys to actual dashboard nav keys
+  const resolveNav = (nav: string) => {
+    const map: Record<string, string> = { book: 'create', wallet: 'payment', history: 'history', agro: 'agro' };
+    return map[nav] ?? nav;
+  };
+
+  const [activeNav, setActiveNav] = useState(() => resolveNav(initialNav));
   const [desktopCollapsed, setDesktopCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [customerId, setCustomerId] = useState<string | null>(null);
@@ -274,7 +282,7 @@ export default function CustomerDashboard({ userState = 'Lagos', userName = 'Ade
           shadowOffset: { width: 4, height: 0 },
         }
       ]}>
-      <View style={[styles.sidebarLogo, (!isMobile && desktopCollapsed) && { padding: 12 }, isMobile && { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12 }]}>
+      <View style={[styles.sidebarLogo, (!isMobile && desktopCollapsed) && { padding: 12, alignItems: 'center', justifyContent: 'center' }]}>
         {(!isMobile && desktopCollapsed) ? (
           <Image
             source={require('../assets/images/logo.jpg')}
@@ -284,13 +292,16 @@ export default function CustomerDashboard({ userState = 'Lagos', userName = 'Ade
         ) : (
           <Image
             source={require('../assets/images/logo.jpg')}
-            style={[styles.sidebarLogoImg, isMobile && { flex: 1, height: 60, marginRight: 8 }]}
-            resizeMode="contain"
+            style={styles.sidebarLogoImg}
+            resizeMode="cover"
           />
         )}
         {isMobile && (
-          <Pressable onPress={() => setMobileMenuOpen(false)} style={{ padding: 4 }}>
-            <ChevronLeft color="#fff" size={24} />
+          <Pressable
+            onPress={() => setMobileMenuOpen(false)}
+            style={{ position: 'absolute', top: 8, right: 8, padding: 6, backgroundColor: 'rgba(0,0,0,0.35)', borderRadius: 20 }}
+          >
+            <ChevronLeft color="#fff" size={22} />
           </Pressable>
         )}
       </View>
@@ -623,6 +634,8 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255,255,255,0.08)',
     width: '100%',
+    overflow: 'hidden',
+    position: 'relative',
   },
   sidebarLogoImg: {
     width: '100%',

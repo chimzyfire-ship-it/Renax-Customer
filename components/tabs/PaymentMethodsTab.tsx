@@ -530,8 +530,8 @@ export default function PaymentMethodsTab({ customerId }: PaymentMethodsTabProps
             </View>
 
             <View style={[styles.sectionCard, isCompact && { padding: 18 }]}>
-              <View style={styles.sectionHead}>
-                <View>
+              <View style={[styles.sectionHead, { overflow: 'hidden' }]}>
+                <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={styles.sectionTitle}>Wallet Activity</Text>
                   <Text style={styles.sectionSub}>Every funding event, shipment payment, and withdrawal request is recorded here.</Text>
                 </View>
@@ -843,7 +843,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   sectionTitle: { fontFamily: 'PlusJakartaSans_7', fontSize: 20, color: '#111', marginBottom: 4 },
-  sectionSub: { fontFamily: 'Outfit_4', fontSize: 13, color: '#777', maxWidth: 620 },
+  sectionSub: { fontFamily: 'Outfit_4', fontSize: 13, color: '#777', flexShrink: 1 },
   smallActionBtn: {
     flexDirection: 'row',
     alignItems: 'center',

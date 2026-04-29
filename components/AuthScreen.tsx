@@ -180,48 +180,233 @@ export default function AuthScreen({ onAuthenticated }) {
     );
   }
 
-  // ─── AUTH SCREEN (Split Panel) ───
+  // ─── AUTH SCREEN ───
+  // Mobile: full-screen green gradient with large logo + form fills screen
+  // Desktop: classic split panel with background image
+  if (isMobile) {
+    return (
+      <View style={{ flex: 1 }}>
+        {/* Rich green gradient — no background image on mobile to avoid overwhelm */}
+        <LinearGradient
+          colors={['#012a1a', '#004d3d', '#002a1f', '#010f09']}
+          style={StyleSheet.absoluteFillObject as any}
+          start={{ x: 0.2, y: 0 }}
+          end={{ x: 0.8, y: 1 }}
+        />
+        {/* Subtle decorative circle */}
+        <View style={{
+          position: 'absolute', top: -80, right: -80,
+          width: 280, height: 280, borderRadius: 140,
+          backgroundColor: 'rgba(204,253,58,0.06)',
+        }} />
+        <View style={{
+          position: 'absolute', bottom: -60, left: -60,
+          width: 220, height: 220, borderRadius: 110,
+          backgroundColor: 'rgba(204,253,58,0.04)',
+        }} />
+
+        <ScrollView
+          contentContainerStyle={{ flexGrow: 1 }}
+          showsVerticalScrollIndicator={false}
+          bounces={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          {/* ── TOP: Logo Hero ── */}
+          <Animated.View
+            entering={FadeIn.duration(800)}
+            style={{
+              alignItems: 'center',
+              paddingTop: 60,
+              paddingBottom: 32,
+              paddingHorizontal: 24,
+            }}
+          >
+            <Image
+              source={require('../assets/images/logo.jpg')}
+              style={{ width: 240, height: 100, marginBottom: 16 }}
+              resizeMode="contain"
+            />
+            <Text style={{ fontFamily: 'PlusJakartaSans_6', fontSize: 14, color: 'rgba(200,255,220,0.55)', letterSpacing: 2, textTransform: 'uppercase' }}>
+              Nigeria's Logistics Platform
+            </Text>
+          </Animated.View>
+
+          {/* ── BOTTOM: Form Panel fills the rest ── */}
+          <Animated.View
+            entering={FadeInDown.duration(600).delay(200)}
+            style={{
+              flex: 1,
+              backgroundColor: 'rgba(3,18,11,0.96)',
+              borderTopLeftRadius: 32,
+              borderTopRightRadius: 32,
+              padding: 28,
+              paddingBottom: 48,
+              borderTopWidth: 1,
+              borderTopColor: 'rgba(204,253,58,0.12)',
+            }}
+          >
+            {/* Tabs */}
+            <View style={styles.authTabs}>
+              <Pressable onPress={() => setMode('signin')} style={[styles.authTab, mode === 'signin' && styles.authTabActive]}>
+                <Text style={[styles.authTabText, mode === 'signin' && styles.authTabTextActive]}>{t('auth.signin')}</Text>
+              </Pressable>
+              <Pressable onPress={() => setMode('signup')} style={[styles.authTab, mode === 'signup' && styles.authTabActive]}>
+                <Text style={[styles.authTabText, mode === 'signup' && styles.authTabTextActive]}>{t('auth.signup')}</Text>
+              </Pressable>
+            </View>
+
+            {mode === 'signin' ? (
+              <Animated.View entering={FadeInDown.duration(400)} style={{ gap: 18 }}>
+                <View>
+                  <Text style={styles.authWelcome}>{t('auth.welcome')}</Text>
+                  <Text style={styles.authWelcomeSub}>{t('auth.subtitle')}</Text>
+                </View>
+
+                <View style={styles.inputWrap}>
+                  <Text style={styles.inputLabel}>{t('auth.email')}</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="you@email.com"
+                    placeholderTextColor="#4a6650"
+                    keyboardType="email-address"
+                    value={email}
+                    onChangeText={setEmail}
+                    autoCapitalize="none"
+                  />
+                </View>
+
+                <View style={styles.inputWrap}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                    <Text style={styles.inputLabel}>{t('auth.password')}</Text>
+                    <Pressable><Text style={styles.forgotText}>{t('auth.forgot')}</Text></Pressable>
+                  </View>
+                  <View style={styles.passWrap}>
+                    <TextInput
+                      style={[styles.input, { flex: 1, borderWidth: 0 }]}
+                      placeholder="••••••••"
+                      placeholderTextColor="#4a6650"
+                      secureTextEntry={!showPass}
+                      value={password}
+                      onChangeText={setPassword}
+                    />
+                    <Pressable onPress={() => setShowPass(p => !p)}>
+                      {showPass ? <EyeOff color="#4a6650" size={20} /> : <Eye color="#4a6650" size={20} />}
+                    </Pressable>
+                  </View>
+                </View>
+
+                <Pressable style={styles.authBtn} onPress={handleSignIn}>
+                  <Text style={styles.authBtnText}>{t('auth.signin')}</Text>
+                  <ArrowRight color="#002B22" size={20} />
+                </Pressable>
+
+                <View style={styles.orRow}>
+                  <View style={styles.orLine} />
+                  <Text style={styles.orText}>{t('auth.or')}</Text>
+                  <View style={styles.orLine} />
+                </View>
+
+                <Pressable style={styles.switchBtn} onPress={() => setMode('signup')}>
+                  <Text style={styles.switchText}>{t('auth.newuser')} <Text style={{ color: '#ccfd3a' }}>{t('auth.signup')}</Text></Text>
+                </Pressable>
+              </Animated.View>
+            ) : (
+              <Animated.View entering={FadeInDown.duration(400)} style={{ gap: 18 }}>
+                <View>
+                  <Text style={styles.authWelcome}>{t('auth.create')}</Text>
+                  <Text style={styles.authWelcomeSub}>Join thousands of Nigerians shipping smarter.</Text>
+                </View>
+
+                <View style={styles.inputWrap}>
+                  <Text style={styles.inputLabel}>{t('auth.name')}</Text>
+                  <TextInput style={styles.input} placeholder="Adewale Okafor" placeholderTextColor="#4a6650" value={name} onChangeText={setName} />
+                </View>
+
+                <View style={styles.inputWrap}>
+                  <Text style={styles.inputLabel}>{t('auth.email')}</Text>
+                  <TextInput style={styles.input} placeholder="you@email.com" placeholderTextColor="#4a6650" keyboardType="email-address" value={email} onChangeText={setEmail} autoCapitalize="none" />
+                </View>
+
+                <View style={styles.inputWrap}>
+                  <Text style={styles.inputLabel}>{t('auth.phone')}</Text>
+                  <TextInput style={styles.input} placeholder="+234 801 234 5678" placeholderTextColor="#4a6650" keyboardType="phone-pad" value={phone} onChangeText={setPhone} />
+                </View>
+
+                <View style={styles.inputWrap}>
+                  <Text style={styles.inputLabel}>{t('auth.password')}</Text>
+                  <View style={styles.passWrap}>
+                    <TextInput
+                      style={[styles.input, { flex: 1, borderWidth: 0 }]}
+                      placeholder="Create a strong password"
+                      placeholderTextColor="#4a6650"
+                      secureTextEntry={!showPass}
+                      value={password}
+                      onChangeText={setPassword}
+                    />
+                    <Pressable onPress={() => setShowPass(p => !p)}>
+                      {showPass ? <EyeOff color="#4a6650" size={20} /> : <Eye color="#4a6650" size={20} />}
+                    </Pressable>
+                  </View>
+                </View>
+
+                <Pressable onPress={() => setAgreed(p => !p)} style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                  <View style={[styles.checkbox, agreed && styles.checkboxChecked]}>
+                    {agreed && <Check color="#002B22" size={14} />}
+                  </View>
+                  <Text style={styles.agreeText}>{t('auth.agree')}</Text>
+                </Pressable>
+
+                <Pressable style={[styles.authBtn, !agreed && { opacity: 0.5 }]} onPress={() => agreed && handleSignUp()}>
+                  <Text style={styles.authBtnText}>{t('auth.create')}</Text>
+                  <ArrowRight color="#002B22" size={20} />
+                </Pressable>
+
+                <Pressable style={styles.switchBtn} onPress={() => setMode('signin')}>
+                  <Text style={styles.switchText}>{t('auth.existing')} <Text style={{ color: '#ccfd3a' }}>{t('auth.signin')}</Text></Text>
+                </Pressable>
+              </Animated.View>
+            )}
+          </Animated.View>
+        </ScrollView>
+      </View>
+    );
+  }
+
+  // ─── DESKTOP: Split Panel ───
   return (
     <View style={{ flex: 1, backgroundColor: '#020f09' }}>
-      <Image source={require('../assets/images/Sign in page background .png')} style={StyleSheet.absoluteFillObject as any} resizeMode="contain" />
+      <Image source={require('../assets/images/Sign in page background .png')} style={StyleSheet.absoluteFillObject as any} resizeMode="cover" />
       <LinearGradient
         colors={['rgba(0,20,13,0.2)', 'rgba(2,15,9,0.75)']}
         style={StyleSheet.absoluteFillObject as any}
       />
 
-      <ScrollView contentContainerStyle={{ flexGrow: 1 }} showsVerticalScrollIndicator={false} bounces={false}>
-      <View style={[styles.authContainer, isMobile && { flexDirection: 'column', flex: undefined }]}>
-        <Animated.View entering={FadeIn.duration(800)} style={[styles.leftPanel, isMobile && styles.leftPanelMobile]}>
-          <Image source={require('../assets/images/logo.jpg')} style={[styles.authLogo, isMobile && { height: 60, marginBottom: 12, maxWidth: 200 }]} resizeMode="contain" />
-          <Text style={[styles.authBrandTitle, isMobile && { fontSize: 24, marginBottom: 4 }]}>RENAX Logistics</Text>
-          <Text style={[styles.authBrandSub, isMobile && { fontSize: 14, lineHeight: 20 }]}>Nigeria's fastest growing{'\n'}logistics platform.</Text>
+      <View style={styles.authContainer}>
+        <Animated.View entering={FadeIn.duration(800)} style={styles.leftPanel}>
+          <Image source={require('../assets/images/logo.jpg')} style={styles.authLogo} resizeMode="contain" />
+          <Text style={styles.authBrandTitle}>RENAX Logistics</Text>
+          <Text style={styles.authBrandSub}>Nigeria's fastest growing{'\n'}logistics platform.</Text>
 
-          {!isMobile && (
-            <>
-              <View style={{ gap: 16, marginTop: 40 }}>
-                {[
-                  { icon: 'express', text: 'Express bike & tricycle delivery' },
-                  { icon: 'freight', text: 'Pickup & Heavy Freight nationwide' },
-                  { icon: 'tracking', text: 'Live GPS tracking across all 36 states' },
-                  { icon: 'insurance', text: 'Fully insured & 24/7 customer support' },
-                ].map(f => (
-                  <View key={f.text} style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-                    <Text style={{ fontSize: 24 }}>✓</Text>
-                    <Text style={styles.featureText}>{f.text}</Text>
-                  </View>
-                ))}
+          <View style={{ gap: 16, marginTop: 40 }}>
+            {[
+              { icon: 'express', text: 'Express bike & tricycle delivery' },
+              { icon: 'freight', text: 'Pickup & Heavy Freight nationwide' },
+              { icon: 'tracking', text: 'Live GPS tracking across all 36 states' },
+              { icon: 'insurance', text: 'Fully insured & 24/7 customer support' },
+            ].map(f => (
+              <View key={f.text} style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+                <Text style={{ fontSize: 24 }}>✓</Text>
+                <Text style={styles.featureText}>{f.text}</Text>
               </View>
+            ))}
+          </View>
 
-              <View style={styles.versionTag}>
-                <Text style={styles.versionText}>RENAX Logistics | v1.1.0</Text>
-              </View>
-            </>
-          )}
+          <View style={styles.versionTag}>
+            <Text style={styles.versionText}>RENAX Logistics | v1.1.0</Text>
+          </View>
         </Animated.View>
 
-        {/* ── RIGHT PANEL ── */}
-        <Animated.View entering={FadeInDown.duration(700)} style={[styles.rightPanel, glass, isMobile && styles.rightPanelMobile]}>
-          {/* Tabs */}
+        <Animated.View entering={FadeInDown.duration(700)} style={[styles.rightPanel, glass]}>
           <View style={styles.authTabs}>
             <Pressable onPress={() => setMode('signin')} style={[styles.authTab, mode === 'signin' && styles.authTabActive]}>
               <Text style={[styles.authTabText, mode === 'signin' && styles.authTabTextActive]}>{t('auth.signin')}</Text>
@@ -348,7 +533,6 @@ export default function AuthScreen({ onAuthenticated }) {
           </ScrollView>
         </Animated.View>
       </View>
-      </ScrollView>
     </View>
   );
 }
