@@ -1,6 +1,6 @@
 // LanguageFloater.tsx — Floating language switcher with real i18next integration
 import React, { useState } from 'react';
-import { View, Text, Pressable, StyleSheet, Platform } from 'react-native';
+import { View, Text, Pressable, StyleSheet, Platform, useWindowDimensions } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { setAppLanguage } from '../i18n';
 import { Languages, Check } from 'lucide-react-native';
@@ -16,6 +16,8 @@ const LANGS = [
 
 export default function LanguageFloater() {
   const { i18n, t } = useTranslation();
+  const { width } = useWindowDimensions();
+  const isMobile = width < 900;
   const [open, setOpen] = useState(false);
   const scale = useSharedValue(1);
   const anim = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
@@ -28,9 +30,9 @@ export default function LanguageFloater() {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, isMobile && styles.containerMobile]}>
       {open && (
-          <Animated.View entering={FadeInDown.duration(200)} exiting={FadeOut} style={[styles.menu, glass]}>
+          <Animated.View entering={FadeInDown.duration(200)} exiting={FadeOut} style={[styles.menu, glass, isMobile && styles.menuMobile]}>
           <Text style={styles.menuTitle}>🌍 {t('lang.title', 'Language')}</Text>
           {LANGS.map(lang => (
             <Pressable
@@ -52,7 +54,7 @@ export default function LanguageFloater() {
         onHoverOut={() => { if (Platform.OS === 'web') scale.value = withSpring(1); }}
         onPress={() => setOpen(p => !p)}
       >
-        <Animated.View style={[styles.fab, open && styles.fabOpen, anim]}>
+        <Animated.View style={[styles.fab, isMobile && styles.fabMobile, open && styles.fabOpen, anim]}>
           <Languages color={open ? '#002B22' : '#ccfd3a'} size={22} />
         </Animated.View>
       </Pressable>
@@ -68,6 +70,10 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     zIndex: 9999,
   },
+  containerMobile: {
+    bottom: 104,
+    right: 16,
+  },
   fab: {
     width: 52,
     height: 52,
@@ -81,6 +87,11 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
     shadowRadius: 12,
+  },
+  fabMobile: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
   },
   fabOpen: {
     backgroundColor: '#ccfd3a',
@@ -99,6 +110,10 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.5,
     shadowRadius: 30,
+  },
+  menuMobile: {
+    minWidth: 180,
+    maxWidth: 220,
   },
   menuTitle: {
     fontFamily: 'Outfit_6',

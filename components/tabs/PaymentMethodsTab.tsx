@@ -7,6 +7,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import {
@@ -141,6 +142,9 @@ function Field({
 }
 
 export default function PaymentMethodsTab({ customerId }: PaymentMethodsTabProps) {
+  const { width } = useWindowDimensions();
+  const isMobile = width < 900;
+  const isCompact = width < 640;
   const [resolvedCustomerId, setResolvedCustomerId] = useState<string | null>(customerId ?? null);
   const [wallet, setWallet] = useState<WalletRecord | null>(null);
   const [methods, setMethods] = useState<PaymentMethodRecord[]>([]);
@@ -373,8 +377,8 @@ export default function PaymentMethodsTab({ customerId }: PaymentMethodsTabProps
 
   return (
     <>
-      <ScrollView style={styles.root} contentContainerStyle={{ padding: 32, paddingBottom: 80 }}>
-        <Text style={styles.pageTitle}>Payment Methods</Text>
+      <ScrollView style={styles.root} contentContainerStyle={{ padding: isCompact ? 12 : isMobile ? 16 : 32, paddingBottom: 80 }}>
+        <Text style={[styles.pageTitle, isCompact && { fontSize: 22, marginBottom: 18 }]}>Payment Methods</Text>
 
         {flashMessage ? (
           <View style={styles.flashBanner}>
@@ -393,7 +397,7 @@ export default function PaymentMethodsTab({ customerId }: PaymentMethodsTabProps
           </View>
         ) : (
           <>
-            <View style={styles.walletHero}>
+            <View style={[styles.walletHero, isCompact && { padding: 18 }]}>
               <View style={styles.walletHeroLeft}>
                 <View style={styles.walletBadge}>
                   <Wallet color="#002B22" size={18} />
@@ -407,39 +411,39 @@ export default function PaymentMethodsTab({ customerId }: PaymentMethodsTabProps
               </View>
 
               <View style={styles.walletHeroStats}>
-                <View style={styles.walletStatCard}>
+                <View style={[styles.walletStatCard, isCompact && { minWidth: '100%' as any }]}>
                   <Text style={styles.walletStatLabel}>Pending</Text>
                   <Text style={styles.walletStatValue}>{formatAmount(wallet?.pending_balance)}</Text>
                 </View>
-                <View style={styles.walletStatCard}>
+                <View style={[styles.walletStatCard, isCompact && { minWidth: '100%' as any }]}>
                   <Text style={styles.walletStatLabel}>Funded</Text>
                   <Text style={styles.walletStatValue}>{formatAmount(wallet?.total_funded)}</Text>
                 </View>
-                <View style={styles.walletStatCard}>
+                <View style={[styles.walletStatCard, isCompact && { minWidth: '100%' as any }]}>
                   <Text style={styles.walletStatLabel}>Spent</Text>
                   <Text style={styles.walletStatValue}>{formatAmount(wallet?.total_spent)}</Text>
                 </View>
               </View>
 
               <View style={styles.walletActions}>
-                <Pressable style={styles.primaryBtn} onPress={() => setShowFundingModal(true)}>
+                <Pressable style={[styles.primaryBtn, isCompact && { width: '100%' }]} onPress={() => setShowFundingModal(true)}>
                   <ArrowDownLeft color="#002B22" size={16} />
                   <Text style={styles.primaryBtnText}>Add Funds</Text>
                 </Pressable>
-                <Pressable style={styles.secondaryBtn} onPress={() => setShowWithdrawalModal(true)}>
+                <Pressable style={[styles.secondaryBtn, isCompact && { width: '100%' }]} onPress={() => setShowWithdrawalModal(true)}>
                   <ArrowUpRight color="#004d3d" size={16} />
                   <Text style={styles.secondaryBtnText}>Withdraw</Text>
                 </Pressable>
               </View>
             </View>
 
-            <View style={styles.sectionCard}>
-              <View style={styles.sectionHead}>
+            <View style={[styles.sectionCard, isCompact && { padding: 18 }]}>
+              <View style={[styles.sectionHead, isCompact && { flexDirection: 'column', alignItems: 'stretch' }]}>
                 <View>
                   <Text style={styles.sectionTitle}>Saved Payment Methods</Text>
                   <Text style={styles.sectionSub}>Cards and collection channels customers can use to fund the wallet.</Text>
                 </View>
-                <Pressable style={styles.smallActionBtn} onPress={() => openMethodEditor()}>
+                <Pressable style={[styles.smallActionBtn, isCompact && { alignSelf: 'flex-start' }]} onPress={() => openMethodEditor()}>
                   <Plus color="#004d3d" size={16} />
                   <Text style={styles.smallActionText}>Add Method</Text>
                 </Pressable>
@@ -447,7 +451,7 @@ export default function PaymentMethodsTab({ customerId }: PaymentMethodsTabProps
 
               <View style={styles.grid}>
                 {methods.map((method, index) => (
-                  <Animated.View key={method.id} entering={FadeInDown.delay(index * 60).duration(300)} style={styles.methodCard}>
+                  <Animated.View key={method.id} entering={FadeInDown.delay(index * 60).duration(300)} style={[styles.methodCard, isMobile && { width: '100%', minWidth: 0 }]}>
                     <View style={styles.methodHead}>
                       <View style={styles.methodIconWrap}>
                         {method.type === 'card' ? (
@@ -484,13 +488,13 @@ export default function PaymentMethodsTab({ customerId }: PaymentMethodsTabProps
               </View>
             </View>
 
-            <View style={styles.sectionCard}>
-              <View style={styles.sectionHead}>
+            <View style={[styles.sectionCard, isCompact && { padding: 18 }]}>
+              <View style={[styles.sectionHead, isCompact && { flexDirection: 'column', alignItems: 'stretch' }]}>
                 <View>
                   <Text style={styles.sectionTitle}>Withdrawal Accounts</Text>
                   <Text style={styles.sectionSub}>Customers can withdraw RENAX wallet balance back to any saved bank account.</Text>
                 </View>
-                <Pressable style={styles.smallActionBtn} onPress={() => openBankEditor()}>
+                <Pressable style={[styles.smallActionBtn, isCompact && { alignSelf: 'flex-start' }]} onPress={() => openBankEditor()}>
                   <Plus color="#004d3d" size={16} />
                   <Text style={styles.smallActionText}>Add Bank</Text>
                 </Pressable>
@@ -525,7 +529,7 @@ export default function PaymentMethodsTab({ customerId }: PaymentMethodsTabProps
               </View>
             </View>
 
-            <View style={styles.sectionCard}>
+            <View style={[styles.sectionCard, isCompact && { padding: 18 }]}>
               <View style={styles.sectionHead}>
                 <View>
                   <Text style={styles.sectionTitle}>Wallet Activity</Text>
@@ -557,8 +561,8 @@ export default function PaymentMethodsTab({ customerId }: PaymentMethodsTabProps
       </ScrollView>
 
       <Modal visible={showMethodModal} transparent animationType="slide" onRequestClose={() => setShowMethodModal(false)}>
-        <Pressable style={styles.modalOverlay} onPress={() => setShowMethodModal(false)}>
-          <Pressable style={styles.modalCard} onPress={() => {}}>
+        <Pressable style={[styles.modalOverlay, isCompact && { padding: 12 }]} onPress={() => setShowMethodModal(false)}>
+          <Pressable style={[styles.modalCard, isCompact && { padding: 18 }]} onPress={() => {}}>
             <View style={styles.modalHead}>
               <Text style={styles.modalTitle}>{methodForm.id ? 'Edit Payment Method' : 'Add Payment Method'}</Text>
               <Pressable onPress={() => setShowMethodModal(false)} style={styles.iconBtn}>
@@ -612,8 +616,8 @@ export default function PaymentMethodsTab({ customerId }: PaymentMethodsTabProps
       </Modal>
 
       <Modal visible={showBankModal} transparent animationType="slide" onRequestClose={() => setShowBankModal(false)}>
-        <Pressable style={styles.modalOverlay} onPress={() => setShowBankModal(false)}>
-          <Pressable style={styles.modalCard} onPress={() => {}}>
+        <Pressable style={[styles.modalOverlay, isCompact && { padding: 12 }]} onPress={() => setShowBankModal(false)}>
+          <Pressable style={[styles.modalCard, isCompact && { padding: 18 }]} onPress={() => {}}>
             <View style={styles.modalHead}>
               <Text style={styles.modalTitle}>{bankForm.id ? 'Edit Bank Account' : 'Add Bank Account'}</Text>
               <Pressable onPress={() => setShowBankModal(false)} style={styles.iconBtn}>
@@ -643,8 +647,8 @@ export default function PaymentMethodsTab({ customerId }: PaymentMethodsTabProps
       </Modal>
 
       <Modal visible={showFundingModal} transparent animationType="slide" onRequestClose={() => setShowFundingModal(false)}>
-        <Pressable style={styles.modalOverlay} onPress={() => setShowFundingModal(false)}>
-          <Pressable style={styles.modalCard} onPress={() => {}}>
+        <Pressable style={[styles.modalOverlay, isCompact && { padding: 12 }]} onPress={() => setShowFundingModal(false)}>
+          <Pressable style={[styles.modalCard, isCompact && { padding: 18 }]} onPress={() => {}}>
             <View style={styles.modalHead}>
               <Text style={styles.modalTitle}>Add Funds to RENAX Wallet</Text>
               <Pressable onPress={() => setShowFundingModal(false)} style={styles.iconBtn}>
@@ -705,8 +709,8 @@ export default function PaymentMethodsTab({ customerId }: PaymentMethodsTabProps
       </Modal>
 
       <Modal visible={showWithdrawalModal} transparent animationType="slide" onRequestClose={() => setShowWithdrawalModal(false)}>
-        <Pressable style={styles.modalOverlay} onPress={() => setShowWithdrawalModal(false)}>
-          <Pressable style={styles.modalCard} onPress={() => {}}>
+        <Pressable style={[styles.modalOverlay, isCompact && { padding: 12 }]} onPress={() => setShowWithdrawalModal(false)}>
+          <Pressable style={[styles.modalCard, isCompact && { padding: 18 }]} onPress={() => {}}>
             <View style={styles.modalHead}>
               <Text style={styles.modalTitle}>Withdraw Wallet Balance</Text>
               <Pressable onPress={() => setShowWithdrawalModal(false)} style={styles.iconBtn}>
