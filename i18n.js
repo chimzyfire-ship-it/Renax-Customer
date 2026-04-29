@@ -2,6 +2,7 @@
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 
 const resources = {
   en: {
@@ -376,8 +377,12 @@ i18n
     interpolation: { escapeValue: false },
   });
 
+
+
 // Restore persisted language (if any) and expose a helper to change+persist
 (async () => {
+  if (Platform.OS === 'web' && typeof window === 'undefined') return;
+  
   try {
     const saved = await AsyncStorage.getItem('renax_lang');
     if (saved && saved !== i18n.language) {
