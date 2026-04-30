@@ -20,27 +20,21 @@ import { Outfit_400Regular, Outfit_600SemiBold, Outfit_700Bold } from '@expo-goo
 import { LinearGradient } from 'expo-linear-gradient';
 import {
   ArrowRight,
-  BarChart3,
-  CheckCircle2,
   ChevronDown,
   ChevronRight,
   ChevronUp,
-  Clock,
-  Headphones,
-  MapPin,
   Package,
-  Shield,
-  Star,
-  Truck,
 } from 'lucide-react-native';
 import Animated, {
   FadeIn,
   FadeInDown,
+  interpolate,
   useAnimatedStyle,
   useSharedValue,
   withRepeat,
   withSpring,
   withTiming,
+  Easing,
 } from 'react-native-reanimated';
 
 const NAV_ROUTE_MAP: Record<string, string> = {
@@ -64,34 +58,34 @@ const NAV = [
   {
     label: 'Shipping',
     items: [
-      { icon: Package, label: 'Book a Shipment', desc: 'Send parcels across Nigeria with ease.' },
-      { icon: Truck, label: 'Freight & Bulk Cargo', desc: 'Move heavier loads with dependable line-haul support.' },
-      { icon: Truck, label: 'Agro Transport', desc: 'Get farm produce to market fresh and on time.' },
+      { label: 'Book a Shipment', desc: 'Send parcels across Nigeria with ease.' },
+      { label: 'Freight & Bulk Cargo', desc: 'Move heavier loads with dependable line-haul support.' },
+      { label: 'Agro Transport', desc: 'Get farm produce to market fresh and on time.' },
     ],
   },
   {
     label: 'Tracking',
     items: [
-      { icon: MapPin, label: 'Live Tracking', desc: 'See every shipment update in real time.' },
-      { icon: Clock, label: 'Delivery History', desc: 'Review completed jobs and delivery milestones.' },
-      { icon: BarChart3, label: 'Analytics', desc: 'Monitor your logistics activity and performance.' },
+      { label: 'Live Tracking', desc: 'See every shipment update in real time.' },
+      { label: 'Delivery History', desc: 'Review completed jobs and delivery milestones.' },
+      { label: 'Analytics', desc: 'Monitor your logistics activity and performance.' },
     ],
   },
   {
     label: 'Services',
     items: [
-      { icon: Package, label: 'Custom Deliveries', desc: 'Flexible shipping for personal and business needs.' },
-      { icon: Truck, label: 'Pickup Truck Freight', desc: 'Fast freight handling for medium-sized cargo.' },
-      { icon: Truck, label: 'Cargo Tricycle Haulage', desc: 'Navigate dense city routes efficiently and affordably.' },
-      { icon: Truck, label: 'Express Bike Delivery', desc: 'Handle urgent deliveries with speed and precision.' },
+      { label: 'Custom Deliveries', desc: 'Flexible shipping for personal and business needs.' },
+      { label: 'Pickup Truck Freight', desc: 'Fast freight handling for medium-sized cargo.' },
+      { label: 'Cargo Tricycle Haulage', desc: 'Navigate dense city routes efficiently and affordably.' },
+      { label: 'Express Bike Delivery', desc: 'Handle urgent deliveries with speed and precision.' },
     ],
   },
   {
     label: 'Support',
     items: [
-      { icon: Headphones, label: 'Live Chat', desc: 'Reach our support team whenever you need help.' },
-      { icon: Shield, label: 'Insurance Claims', desc: 'File and track shipment protection requests.' },
-      { icon: Star, label: 'FAQs', desc: 'Browse quick answers to common questions.' },
+      { label: 'Live Chat', desc: 'Reach our support team whenever you need help.' },
+      { label: 'Insurance Claims', desc: 'File and track shipment protection requests.' },
+      { label: 'FAQs', desc: 'Browse quick answers to common questions.' },
     ],
   },
   {
@@ -101,13 +95,12 @@ const NAV = [
 ];
 
 const HERO_STATS = [
-  { icon: Shield, value: '99.9%', label: 'On-Time Delivery' },
-  { icon: Headphones, value: '24/7', label: 'Customer Support' },
-  { icon: MapPin, value: '36', label: 'States Covered' },
-  { icon: CheckCircle2, value: 'Fully', label: 'Insured' },
+  { value: '99.9%', label: 'On-Time Delivery' },
+  { value: '24/7', label: 'Customer Support' },
+  { value: '36', label: 'States Covered' },
+  { value: 'Fully', label: 'Insured' },
 ];
 
-const TRUSTED_BRANDS = ['DANGOTE', 'Olam', 'BUA GROUP', 'GTCO', 'JMG', 'Presco', 'and more...'];
 
 const SERVICE_CARDS = [
   {
@@ -134,31 +127,27 @@ const SERVICE_CARDS = [
 
 const SERVICE_BENEFITS = [
   {
-    icon: Shield,
     title: 'Secure & Insured',
     desc: 'Every delivery is backed by careful handling and dependable protection.',
   },
   {
-    icon: MapPin,
     title: 'Nationwide Coverage',
     desc: 'We operate across all 36 states and the FCT with reliable reach.',
   },
   {
-    icon: Clock,
     title: 'On-Time Performance',
     desc: 'Speed, visibility, and punctuality stay built into every route.',
   },
   {
-    icon: Headphones,
     title: 'Always Available',
     desc: 'Our support team stays ready to help around the clock.',
   },
 ];
 
 const AGRO_FEATURES = [
-  { icon: Shield, label: 'Safe & Hygienic\nTransport' },
-  { icon: Truck, label: 'Temperature\nControlled' },
-  { icon: CheckCircle2, label: 'Farm Fresh\nGuaranteed' },
+  { label: 'Safe & Hygienic\nTransport' },
+  { label: 'Temperature\nControlled' },
+  { label: 'Farm Fresh\nGuaranteed' },
 ];
 
 const AGRO_STEPS = [
@@ -189,7 +178,7 @@ const HoverBtn = ({ children, style, onPress, ...props }) => {
   );
 };
 
-const DropItem = ({ icon: Icon, label, desc, onPress }) => {
+const DropItem = ({ label, desc, onPress }) => {
   const [hovered, setHovered] = useState(false);
 
   return (
@@ -199,15 +188,92 @@ const DropItem = ({ icon: Icon, label, desc, onPress }) => {
       onPress={onPress}
       style={[styles.dropItem, hovered && styles.dropItemHover]}
     >
-      <View style={styles.dropIconWrap}>
-        <Icon color="#ccfd3a" size={18} />
-      </View>
+      <View style={styles.dropItemBar} />
       <View style={{ flex: 1 }}>
         <Text style={styles.dropLabel}>{label}</Text>
         <Text style={styles.dropDesc}>{desc}</Text>
       </View>
-      <ArrowRight color="#ccfd3a" size={14} />
+      <ArrowRight color="rgba(204,253,58,0.6)" size={13} />
     </Pressable>
+  );
+};
+
+const LogoGlow = ({ isCompact, isMobile }: { isCompact: boolean; isMobile: boolean }) => {
+  const progress = useSharedValue(0);
+  const pulse = useSharedValue(0);
+
+  useEffect(() => {
+    progress.value = withRepeat(
+      withTiming(1, { duration: 3200, easing: Easing.linear }),
+      -1,
+      false
+    );
+    pulse.value = withRepeat(
+      withTiming(1, { duration: 1800, easing: Easing.inOut(Easing.sin) }),
+      -1,
+      true
+    );
+  }, []);
+
+  const ringAnim = useAnimatedStyle(() => {
+    const deg = interpolate(progress.value, [0, 1], [0, 360]);
+    return {
+      transform: [{ rotate: `${deg}deg` }],
+      opacity: interpolate(pulse.value, [0, 1], [0.45, 0.9]),
+    };
+  });
+
+  const innerAnim = useAnimatedStyle(() => ({
+    opacity: interpolate(pulse.value, [0, 1], [0.15, 0.38]),
+  }));
+
+  const logoW = isCompact ? 190 : isMobile ? 230 : 300;
+  const logoH = isCompact ? 54 : isMobile ? 68 : 86;
+
+  return (
+    <View style={{ width: logoW, height: logoH, justifyContent: 'center', alignItems: 'center' }}>
+      {/* Outer rotating ring */}
+      <Animated.View
+        style={[
+          ringAnim,
+          {
+            position: 'absolute',
+            width: logoW + 22,
+            height: logoH + 22,
+            borderRadius: 20,
+            borderWidth: 1.5,
+            borderColor: '#ccfd3a',
+            borderTopColor: 'transparent',
+            borderRightColor: 'transparent',
+            ...(Platform.OS === 'web'
+              ? ({ boxShadow: '0 0 16px 2px rgba(204,253,58,0.24)' } as any)
+              : {}),
+          },
+        ]}
+      />
+      {/* Second ring spinning opposite */}
+      <Animated.View
+        style={[
+          innerAnim,
+          {
+            position: 'absolute',
+            width: logoW + 10,
+            height: logoH + 10,
+            borderRadius: 15,
+            borderWidth: 1,
+            borderColor: '#ccfd3a',
+          },
+        ]}
+      />
+      <Image
+        source={require('../assets/images/logo.jpg')}
+        style={[
+          { width: logoW, height: logoH, borderRadius: 10 },
+          Platform.OS === 'web' ? ({ mixBlendMode: 'screen' } as any) : {},
+        ]}
+        resizeMode="contain"
+      />
+    </View>
   );
 };
 
@@ -234,7 +300,11 @@ export default function LandingScreen({ onEnterApp, isLoggedIn = false }) {
   const isCompact = width < 640;
   const [openMenu, setOpenMenu] = useState<string | null>(null);
 
-  const heroHeight = isCompact ? Math.max(height, 1080) : isMobile ? Math.max(height, 1220) : Math.max(height, 980);
+  const heroHeight = isCompact
+    ? Math.max(height, 820)
+    : isMobile
+    ? Math.max(height, 1100)
+    : Math.max(height, 980);
   const [fontsLoaded] = useFonts({
     PlusJakartaSans_8: PlusJakartaSans_800ExtraBold,
     PlusJakartaSans_7: PlusJakartaSans_700Bold,
@@ -266,7 +336,6 @@ export default function LandingScreen({ onEnterApp, isLoggedIn = false }) {
         {nav.items.map((item) => (
           <DropItem
             key={item.label}
-            icon={item.icon}
             label={item.label}
             desc={item.desc}
             onPress={() => handleNavItem(item.label)}
@@ -297,19 +366,11 @@ export default function LandingScreen({ onEnterApp, isLoggedIn = false }) {
             style={[
               styles.navbar,
               glass,
-              isCompact && { paddingHorizontal: 16, paddingVertical: 12 },
+              isCompact && { paddingHorizontal: 14, paddingVertical: 8 },
               isMobile && !isCompact && { paddingHorizontal: 24 },
             ]}
           >
-            <Image
-              source={require('../assets/images/logo.jpg')}
-              style={[
-                styles.logo,
-                isCompact && { width: 160, height: 44 },
-                isMobile && !isCompact && { width: 190, height: 54 },
-              ]}
-              resizeMode="contain"
-            />
+            <LogoGlow isCompact={isCompact} isMobile={isMobile} />
 
             {!isMobile && (
               <View style={styles.navLinks}>
@@ -371,7 +432,6 @@ export default function LandingScreen({ onEnterApp, isLoggedIn = false }) {
                     {nav.items.map((item) => (
                       <DropItem
                         key={item.label}
-                        icon={item.icon}
                         label={item.label}
                         desc={item.desc}
                         onPress={() => handleNavItem(item.label)}
@@ -387,43 +447,53 @@ export default function LandingScreen({ onEnterApp, isLoggedIn = false }) {
             entering={FadeIn.duration(900)}
             style={[
               styles.heroContentWrap,
-              isCompact && { paddingHorizontal: 20, paddingTop: 44 },
-              isMobile && !isCompact && { paddingHorizontal: 28, paddingTop: 46 },
+              isCompact && { paddingHorizontal: 18, paddingTop: 32 },
+              isMobile && !isCompact && { paddingHorizontal: 28, paddingTop: 40 },
             ]}
           >
             <View style={[styles.heroCopyColumn, isMobile && styles.heroCopyColumnMobile]}>
-              <Text style={styles.heroEyebrow}>NIGERIA'S MOST RELIABLE LOGISTICS PARTNER</Text>
+              <Text
+                style={[
+                  styles.heroEyebrow,
+                  isCompact && { fontSize: 10, letterSpacing: 2, marginBottom: 14 },
+                ]}
+              >
+                NIGERIA'S MOST RELIABLE LOGISTICS PARTNER
+              </Text>
               <Text
                 style={[
                   styles.heroH1,
-                  isCompact && { fontSize: 48, lineHeight: 52, maxWidth: 320 },
-                  isMobile && !isCompact && { fontSize: 68, lineHeight: 72, maxWidth: 680 },
+                  isCompact && { fontSize: 42, lineHeight: 46, maxWidth: '100%' },
+                  isMobile && !isCompact && { fontSize: 62, lineHeight: 68, maxWidth: 680 },
                 ]}
               >
-                We Move More{'\n'}
+                We Move More{' '}
                 <Text style={styles.heroAccent}>So You Can Grow</Text>
               </Text>
               <Text
                 style={[
                   styles.heroSub,
-                  isCompact && { fontSize: 16, lineHeight: 25, maxWidth: 320 },
-                  isMobile && !isCompact && { fontSize: 19, lineHeight: 30, maxWidth: 620 },
+                  isCompact && { fontSize: 15, lineHeight: 24, maxWidth: '100%', marginBottom: 22 },
+                  isMobile && !isCompact && { fontSize: 18, lineHeight: 29, maxWidth: 620 },
                 ]}
               >
-                Renax Logistics delivers across Nigeria and beyond.{'\n'}
-                From parcels to pallets, farm produce to industrial equipment,{'\n'}
-                we move what matters - safely, on time, every time.
+                {isCompact
+                  ? 'Fast, reliable logistics across Nigeria — parcels to pallets, safely on time.'
+                  : 'Renax Logistics delivers across Nigeria and beyond.\nFrom parcels to pallets, farm produce to industrial equipment,\nwe move what matters - safely, on time, every time.'}
               </Text>
 
               <View
                 style={[
                   styles.heroCtas,
-                  isMobile && { width: '100%', maxWidth: isCompact ? 320 : 520 },
-                  isCompact && { flexDirection: 'column', gap: 12, marginBottom: 30 },
+                  isMobile && { width: '100%', maxWidth: isCompact ? '100%' : 520 },
+                  isCompact && { flexDirection: 'column', gap: 10, marginBottom: 22 },
                 ]}
               >
                 <HoverBtn
-                  style={[styles.btnPrimary, isMobile && { width: '100%', justifyContent: 'center' }]}
+                  style={[
+                    styles.btnPrimary,
+                    isMobile && { width: '100%', justifyContent: 'center', minHeight: 52 },
+                  ]}
                   onPress={() => onEnterApp('track')}
                 >
                   <Package color="#002B22" size={20} />
@@ -431,7 +501,11 @@ export default function LandingScreen({ onEnterApp, isLoggedIn = false }) {
                 </HoverBtn>
 
                 <HoverBtn
-                  style={[styles.btnSecondary, glassLight, isMobile && { width: '100%', justifyContent: 'center' }]}
+                  style={[
+                    styles.btnSecondary,
+                    glassLight,
+                    isMobile && { width: '100%', justifyContent: 'center', minHeight: 52 },
+                  ]}
                   onPress={() => onEnterApp('book')}
                 >
                   <Text style={styles.btnSecondaryText}>GET INSTANT QUOTE</Text>
@@ -439,36 +513,45 @@ export default function LandingScreen({ onEnterApp, isLoggedIn = false }) {
                 </HoverBtn>
               </View>
 
-              <View style={[styles.heroStats, glassLight, isCompact && styles.heroStatsCompact]}>
-                {HERO_STATS.map((stat) => {
-                  const Icon = stat.icon;
-                  return (
-                    <View key={stat.label} style={[styles.heroStatItem, isCompact && styles.heroStatItemCompact]}>
-                      <View style={styles.heroStatIconWrap}>
-                        <Icon color="#ccfd3a" size={20} />
-                      </View>
+              {isCompact ? (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  style={{ width: '100%', marginBottom: 16 }}
+                  contentContainerStyle={{ gap: 10, paddingRight: 8 }}
+                >
+                  {HERO_STATS.map((stat) => (
+                    <View key={stat.label} style={styles.heroStatItemCompact}>
+                      <View style={styles.heroStatAccentBar} />
                       <View>
                         <Text style={styles.heroStatValue}>{stat.value}</Text>
                         <Text style={styles.heroStatLabel}>{stat.label}</Text>
                       </View>
                     </View>
-                  );
-                })}
-              </View>
+                  ))}
+                </ScrollView>
+              ) : (
+                <View style={[styles.heroStats, glassLight, isMobile && styles.heroStatsCompact]}>
+                  {HERO_STATS.map((stat) => (
+                    <View key={stat.label} style={styles.heroStatItem}>
+                      <View style={styles.heroStatAccentBar} />
+                      <View>
+                        <Text style={styles.heroStatValue}>{stat.value}</Text>
+                        <Text style={styles.heroStatLabel}>{stat.label}</Text>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              )}
             </View>
           </Animated.View>
 
-          <View style={[styles.brandBar, glassLight, isCompact && styles.brandBarCompact, isMobile && !isCompact && styles.brandBarMobile]}>
-            <View style={[styles.brandLead, !isCompact && styles.brandLeadDesktop]}>
-              <Text style={styles.brandLeadText}>TRUSTED BY THOUSANDS OF BUSINESSES AND FARMERS</Text>
-            </View>
-            <View style={styles.brandLogoWrap}>
-              {TRUSTED_BRANDS.map((brand) => (
-                <Text key={brand} style={styles.brandLogoText}>
-                  {brand}
-                </Text>
-              ))}
-            </View>
+          <View style={[styles.brandBarImgWrap, isCompact && { marginHorizontal: 0 }]}>
+            <Image
+              source={require('../assets/images/bar.png')}
+              style={[styles.brandBarImg, isCompact && { height: 60 }]}
+              resizeMode="contain"
+            />
           </View>
 
           {!isCompact ? (
@@ -513,18 +596,20 @@ export default function LandingScreen({ onEnterApp, isLoggedIn = false }) {
             </View>
 
             <View style={[styles.benefitsRow, isCompact && styles.benefitsRowCompact]}>
-              {SERVICE_BENEFITS.map((benefit) => {
-                const Icon = benefit.icon;
-                return (
-                  <View key={benefit.title} style={[styles.benefitCard, isCompact && styles.benefitCardCompact, isMobile && !isCompact && styles.benefitCardTablet]}>
-                    <View style={styles.benefitIconWrap}>
-                      <Icon color="#ccfd3a" size={20} />
-                    </View>
-                    <Text style={styles.benefitTitle}>{benefit.title}</Text>
-                    <Text style={styles.benefitDesc}>{benefit.desc}</Text>
-                  </View>
-                );
-              })}
+              {SERVICE_BENEFITS.map((benefit) => (
+                <View
+                  key={benefit.title}
+                  style={[
+                    styles.benefitCard,
+                    isCompact && styles.benefitCardCompact,
+                    isMobile && !isCompact && styles.benefitCardTablet,
+                  ]}
+                >
+                  <View style={styles.benefitAccentLine} />
+                  <Text style={[styles.benefitTitle, isCompact && { fontSize: 16 }]}>{benefit.title}</Text>
+                  <Text style={styles.benefitDesc}>{benefit.desc}</Text>
+                </View>
+              ))}
             </View>
           </Animated.View>
         </View>
@@ -544,8 +629,8 @@ export default function LandingScreen({ onEnterApp, isLoggedIn = false }) {
           <View
             style={[
               styles.agroInner,
-              isCompact && { paddingHorizontal: 20, paddingVertical: 60 },
-              isMobile && !isCompact && { paddingHorizontal: 32, paddingVertical: 84 },
+              isCompact && { paddingHorizontal: 18, paddingVertical: 48, flexDirection: 'column' },
+              isMobile && !isCompact && { paddingHorizontal: 32, paddingVertical: 72, flexDirection: 'column' },
             ]}
           >
             <Animated.View entering={FadeInDown.duration(700)} style={[styles.agroCopy, isCompact && { maxWidth: '100%' }]}>
@@ -560,20 +645,23 @@ export default function LandingScreen({ onEnterApp, isLoggedIn = false }) {
 
               <View style={[styles.agroFeaturesRow, isCompact && styles.agroFeaturesRowCompact]}>
                 {AGRO_FEATURES.map((feature, index) => {
-                  const Icon = feature.icon;
                   const showDivider = !isCompact && index < AGRO_FEATURES.length - 1;
                   return (
                     <View key={feature.label} style={[styles.agroFeatureItem, isCompact && styles.agroFeatureItemCompact, showDivider && styles.agroFeatureDivider]}>
-                      <View style={styles.agroFeatureIconWrap}>
-                        <Icon color="#ccfd3a" size={22} />
-                      </View>
+                      <View style={styles.agroFeatureDot} />
                       <Text style={styles.agroFeatureText}>{feature.label}</Text>
                     </View>
                   );
                 })}
               </View>
 
-              <HoverBtn style={styles.agroCta} onPress={() => onEnterApp('agro')}>
+              <HoverBtn
+                style={[
+                  styles.agroCta,
+                  isMobile && { alignSelf: 'stretch', justifyContent: 'center', minHeight: 52 },
+                ]}
+                onPress={() => onEnterApp('agro')}
+              >
                 <Text style={styles.agroCtaText}>Book Agro Transport</Text>
                 <ChevronRight color="#002B22" size={18} />
               </HoverBtn>
@@ -612,7 +700,7 @@ export default function LandingScreen({ onEnterApp, isLoggedIn = false }) {
                       <View style={styles.mobileStepBadge}>
                         <Text style={styles.mobileStepBadgeText}>{index + 1}</Text>
                       </View>
-                      <Text style={styles.mobileStepTitle}>{item.step}</Text>
+                      <Text style={styles.mobileStepTitle}>{item.step.replace(/^\d+\. /, '')}</Text>
                       <Text style={styles.mobileStepDesc}>{item.desc}</Text>
                     </View>
                   ))}
@@ -648,15 +736,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 40,
-    paddingVertical: 14,
+    paddingVertical: 10,
     backgroundColor: 'rgba(0,20,13,0.34)',
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255,255,255,0.06)',
     zIndex: 100,
+    minHeight: 64,
   },
   logo: {
-    width: 240,
-    height: 68,
+    width: 300,
+    height: 86,
     ...(Platform.OS === 'web' ? ({ mixBlendMode: 'screen' } as any) : {}),
   },
   navLinks: {
@@ -735,22 +824,20 @@ const styles = StyleSheet.create({
   dropItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
-    paddingHorizontal: 18,
-    paddingVertical: 13,
-    borderRadius: 12,
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 10,
     marginHorizontal: 6,
   },
   dropItemHover: {
-    backgroundColor: 'rgba(204,253,58,0.07)',
+    backgroundColor: 'rgba(204,253,58,0.06)',
   },
-  dropIconWrap: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(204,253,58,0.1)',
+  dropItemBar: {
+    width: 2,
+    height: 28,
+    borderRadius: 1,
+    backgroundColor: 'rgba(204,253,58,0.5)',
   },
   dropLabel: {
     fontFamily: 'PlusJakartaSans_6',
@@ -895,27 +982,31 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    minWidth: 176,
-    paddingHorizontal: 18,
-    paddingVertical: 16,
-    borderRadius: 18,
+    minWidth: 160,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 16,
     backgroundColor: 'rgba(1,14,9,0.52)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
   },
   heroStatItemCompact: {
-    width: '47%',
-    minWidth: 0,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-  },
-  heroStatIconWrap: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(204,253,58,0.12)',
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 14,
+    backgroundColor: 'rgba(1,14,9,0.52)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  heroStatAccentBar: {
+    width: 3,
+    height: 36,
+    borderRadius: 2,
+    backgroundColor: '#ccfd3a',
+    marginRight: 2,
   },
   heroStatValue: {
     fontFamily: 'PlusJakartaSans_7',
@@ -928,47 +1019,14 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: 'rgba(235,255,244,0.72)',
   },
-  brandBar: {
+  brandBarImgWrap: {
     marginHorizontal: 24,
     marginBottom: 18,
-    paddingHorizontal: 20,
-    paddingVertical: 18,
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: 'rgba(204,253,58,0.14)',
-    backgroundColor: 'rgba(1,12,8,0.44)',
-  },
-  brandBarMobile: {
-    marginHorizontal: 28,
-  },
-  brandBarCompact: {
-    marginHorizontal: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-  },
-  brandLead: {
-    marginBottom: 16,
-  },
-  brandLeadDesktop: {
-    marginBottom: 18,
-  },
-  brandLeadText: {
-    fontFamily: 'Outfit_6',
-    fontSize: 14,
-    lineHeight: 22,
-    color: 'rgba(255,255,255,0.72)',
-    letterSpacing: 0.8,
-  },
-  brandLogoWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
     alignItems: 'center',
-    gap: 18,
   },
-  brandLogoText: {
-    fontFamily: 'PlusJakartaSans_7',
-    fontSize: 18,
-    color: 'rgba(255,255,255,0.78)',
+  brandBarImg: {
+    width: '100%',
+    height: 80,
   },
   scrollHint: {
     alignItems: 'center',
@@ -1096,14 +1154,12 @@ const styles = StyleSheet.create({
     maxWidth: 340,
     minHeight: 0,
   },
-  benefitIconWrap: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(204,253,58,0.1)',
-    marginBottom: 14,
+  benefitAccentLine: {
+    width: 28,
+    height: 2,
+    borderRadius: 1,
+    backgroundColor: '#ccfd3a',
+    marginBottom: 16,
   },
   benefitTitle: {
     fontFamily: 'PlusJakartaSans_7',
@@ -1177,14 +1233,12 @@ const styles = StyleSheet.create({
     borderRightWidth: 1,
     borderRightColor: 'rgba(204,253,58,0.15)',
   },
-  agroFeatureIconWrap: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(204,253,58,0.1)',
-    marginBottom: 12,
+  agroFeatureDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#ccfd3a',
+    marginBottom: 10,
   },
   agroFeatureText: {
     fontFamily: 'Outfit_4',
@@ -1289,7 +1343,7 @@ const styles = StyleSheet.create({
     gap: 14,
   },
   mobileStepCard: {
-    width: 168,
+    width: 180,
     padding: 18,
     borderRadius: 18,
     borderWidth: 1,
