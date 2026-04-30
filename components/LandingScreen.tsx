@@ -88,10 +88,6 @@ const NAV = [
       { label: 'FAQs', desc: 'Browse quick answers to common questions.' },
     ],
   },
-  {
-    label: 'About Us',
-    items: [],
-  },
 ];
 
 const HERO_STATS = [
