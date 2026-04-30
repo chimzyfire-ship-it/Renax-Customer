@@ -13,6 +13,7 @@ import LandingScreen from '../components/LandingScreen';
 import CustomerDashboard from '../components/CustomerDashboard';
 import AuthScreenNew from '../components/AuthScreen';
 import LanguageFloater from '../components/LanguageFloater';
+import RenaxLoader from '../components/RenaxLoader';
 import '../i18n'; // Initialize translations
 
 // Enable smooth animations
@@ -188,9 +189,8 @@ export default function App() {
 
   if (loading) return (
     <View style={styles.loadingScreen}>
-        <Text style={{fontSize: 50, marginBottom: 20}}>📦</Text>
-        <ActivityIndicator size="large" color={THEME.primary}/>
-        <Text style={{color:THEME.subtext, marginTop: 20, letterSpacing: 2}}>RENAX LOGISTICS</Text>
+        <RenaxLoader size={120} />
+        <Text style={{color:THEME.subtext, marginTop: 20, letterSpacing: 2}}>Loading wallet and payment data...</Text>
     </View>
   );
 
