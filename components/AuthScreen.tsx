@@ -7,6 +7,7 @@ import { Outfit_400Regular, Outfit_600SemiBold, Outfit_700Bold } from '@expo-goo
 import { LinearGradient } from 'expo-linear-gradient';
 import { Eye, EyeOff, ArrowRight, Check, MapPin } from 'lucide-react-native';
 import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated';
+import { supabase } from '../supabase';
 
 const NIGERIAN_STATES = [
   'Abia','Adamawa','Akwa Ibom','Anambra','Bauchi','Bayelsa','Benue','Borno',
@@ -65,23 +66,97 @@ export default function AuthScreen({ onAuthenticated }) {
   const [selectedState, setSelectedState] = useState('');
   const [selectedShipType, setSelectedShipType] = useState('');
   const [selectedFreq, setSelectedFreq] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [authError, setAuthError] = useState('');
 
   if (!fontsLoaded) return null;
 
   const glass = Platform.OS === 'web' ? { backdropFilter: 'blur(24px)' } : {};
 
-  const handleSignIn = () => {
-    // For web demo, skip real auth and go straight in
-    onAuthenticated({ state: selectedState || 'Lagos', shipType: selectedShipType, freq: selectedFreq });
+  const handleSignIn = async () => {
+    if (!email.trim() || !password) {
+      setAuthError('Please enter your email and password.');
+      return;
+    }
+
+    setSubmitting(true);
+    setAuthError('');
+
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
+
+      if (error) throw error;
+
+      onAuthenticated?.({
+        state: selectedState || 'Lagos',
+        shipType: selectedShipType,
+        freq: selectedFreq,
+      });
+    } catch (error) {
+      setAuthError(error?.message || 'Could not sign in right now.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleSignUp = () => {
+    if (!name.trim() || !email.trim() || !phone.trim() || !password) {
+      setAuthError('Please complete all signup fields first.');
+      return;
+    }
+
+    setAuthError('');
     // Move to onboarding
     setOnboardStep(1);
   };
 
-  const finishOnboarding = () => {
-    onAuthenticated({ state: selectedState || 'Lagos', shipType: selectedShipType, freq: selectedFreq });
+  const finishOnboarding = async () => {
+    if (!selectedState) {
+      setAuthError('Please choose your state before finishing.');
+      return;
+    }
+
+    setSubmitting(true);
+    setAuthError('');
+
+    try {
+      const trimmedEmail = email.trim();
+
+      const { data, error } = await supabase.auth.signUp({
+        email: trimmedEmail,
+        password,
+      });
+
+      if (error) throw error;
+
+      if (!data.user) {
+        throw new Error('Signup did not return a user account.');
+      }
+
+      const { error: profileError } = await supabase.from('profiles').upsert({
+        id: data.user.id,
+        email: trimmedEmail,
+        role: 'customer',
+        full_name: name.trim() || null,
+        phone_number: phone.trim() || null,
+        state: selectedState || null,
+      });
+
+      if (profileError) throw profileError;
+
+      onAuthenticated?.({
+        state: selectedState || 'Lagos',
+        shipType: selectedShipType,
+        freq: selectedFreq,
+      });
+    } catch (error) {
+      setAuthError(error?.message || 'Could not create your account right now.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   // ─── ONBOARDING STEP 1: Choose State ───
@@ -111,6 +186,7 @@ export default function AuthScreen({ onAuthenticated }) {
             <Text style={styles.onboardBtnText}>{t('onboard.continue')}</Text>
             <ArrowRight color="#002B22" size={20} />
           </Pressable>
+          {authError ? <Text style={styles.inlineError}>{authError}</Text> : null}
           <Pressable onPress={finishOnboarding}><Text style={styles.skipText}>{t('onboard.skip')}</Text></Pressable>
         </Animated.View>
       </View>
@@ -143,6 +219,7 @@ export default function AuthScreen({ onAuthenticated }) {
             <Text style={styles.onboardBtnText}>{t('onboard.continue')}</Text>
             <ArrowRight color="#002B22" size={20} />
           </Pressable>
+          {authError ? <Text style={styles.inlineError}>{authError}</Text> : null}
           <Pressable onPress={finishOnboarding}><Text style={styles.skipText}>{t('onboard.skip')}</Text></Pressable>
         </Animated.View>
       </View>
@@ -171,9 +248,10 @@ export default function AuthScreen({ onAuthenticated }) {
               </Pressable>
             ))}
           </View>
-          <Pressable style={[styles.onboardBtn, !selectedFreq && { opacity: 0.4 }]} onPress={() => selectedFreq && finishOnboarding()}>
-            <Text style={styles.onboardBtnText}>{t('onboard.finish')}</Text>
+          <Pressable style={[styles.onboardBtn, (!selectedFreq || submitting) && { opacity: 0.4 }]} onPress={() => selectedFreq && finishOnboarding()}>
+            <Text style={styles.onboardBtnText}>{submitting ? 'Creating account...' : t('onboard.finish')}</Text>
           </Pressable>
+          {authError ? <Text style={styles.inlineError}>{authError}</Text> : null}
           <Pressable onPress={finishOnboarding}><Text style={styles.skipText}>{t('onboard.skip')}</Text></Pressable>
         </Animated.View>
       </View>
@@ -296,9 +374,11 @@ export default function AuthScreen({ onAuthenticated }) {
                 </View>
 
                 <Pressable style={styles.authBtn} onPress={handleSignIn}>
-                  <Text style={styles.authBtnText}>{t('auth.signin')}</Text>
+                  <Text style={styles.authBtnText}>{submitting ? 'Signing in...' : t('auth.signin')}</Text>
                   <ArrowRight color="#002B22" size={20} />
                 </Pressable>
+
+                {authError ? <Text style={styles.inlineError}>{authError}</Text> : null}
 
                 <View style={styles.orRow}>
                   <View style={styles.orLine} />
@@ -356,10 +436,12 @@ export default function AuthScreen({ onAuthenticated }) {
                   <Text style={styles.agreeText}>{t('auth.agree')}</Text>
                 </Pressable>
 
-                <Pressable style={[styles.authBtn, !agreed && { opacity: 0.5 }]} onPress={() => agreed && handleSignUp()}>
+                <Pressable style={[styles.authBtn, (!agreed || submitting) && { opacity: 0.5 }]} onPress={() => agreed && handleSignUp()}>
                   <Text style={styles.authBtnText}>{t('auth.create')}</Text>
                   <ArrowRight color="#002B22" size={20} />
                 </Pressable>
+
+                {authError ? <Text style={styles.inlineError}>{authError}</Text> : null}
 
                 <Pressable style={styles.switchBtn} onPress={() => setMode('signin')}>
                   <Text style={styles.switchText}>{t('auth.existing')} <Text style={{ color: '#ccfd3a' }}>{t('auth.signin')}</Text></Text>
@@ -458,9 +540,11 @@ export default function AuthScreen({ onAuthenticated }) {
                 </View>
 
                 <Pressable style={styles.authBtn} onPress={handleSignIn}>
-                  <Text style={styles.authBtnText}>{t('auth.signin')}</Text>
+                  <Text style={styles.authBtnText}>{submitting ? 'Signing in...' : t('auth.signin')}</Text>
                   <ArrowRight color="#002B22" size={20} />
                 </Pressable>
+
+                {authError ? <Text style={styles.inlineError}>{authError}</Text> : null}
 
                 <View style={styles.orRow}>
                   <View style={styles.orLine} />
@@ -520,10 +604,12 @@ export default function AuthScreen({ onAuthenticated }) {
                   <Text style={styles.agreeText}>{t('auth.agree')}</Text>
                 </Pressable>
 
-                <Pressable style={[styles.authBtn, !agreed && { opacity: 0.5 }]} onPress={() => agreed && handleSignUp()}>
+                <Pressable style={[styles.authBtn, (!agreed || submitting) && { opacity: 0.5 }]} onPress={() => agreed && handleSignUp()}>
                   <Text style={styles.authBtnText}>{t('auth.create')}</Text>
                   <ArrowRight color="#002B22" size={20} />
                 </Pressable>
+
+                {authError ? <Text style={styles.inlineError}>{authError}</Text> : null}
 
                 <Pressable style={styles.switchBtn} onPress={() => setMode('signin')}>
                   <Text style={styles.switchText}>{t('auth.existing')} <Text style={{ color: '#ccfd3a' }}>{t('auth.signin')}</Text></Text>

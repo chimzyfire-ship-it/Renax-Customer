@@ -14,7 +14,7 @@ import OSMAutocomplete from '../OSMAutocomplete';
 import QRCodeCard from '../QRCodeCard';
 import { buildShipmentQrPayload } from '../../utils/qrPayload';
 import { getActualDrivingDistance } from '../../utils/mapService';
-import { chargeWalletForShipment, DEMO_CUSTOMER_ID } from '../../utils/customerData';
+import { chargeWalletForShipment } from '../../utils/customerData';
 import { generateVerificationCode, logShipmentEvent, resolveRouting } from '../../utils/routingService';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -419,9 +419,9 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
         const { data: { user } } = await supabase.auth.getUser();
         resolvedCustomerId = user?.id ?? null;
       }
-      // Final fallback for porous/dev auth — use a stable test UUID
+
       if (!resolvedCustomerId) {
-        resolvedCustomerId = DEMO_CUSTOMER_ID;
+        throw new Error('Please sign in with a real customer account before creating a shipment.');
       }
 
       if (payMethod === 'RENAX Wallet' && estimatedPrice <= 0) {

@@ -398,7 +398,6 @@ export default function SettingsTab({ customerId }: SettingsTabProps) {
               </View>
             </View>
           ) : null}
-          ) : null}
         </Animated.View>
       </View>
 
