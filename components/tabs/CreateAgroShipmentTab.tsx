@@ -4,11 +4,13 @@ import {
   View, Text, StyleSheet, ScrollView, Pressable,
   TextInput, Modal, FlatList, Switch, ActivityIndicator,
 } from 'react-native';
-import { ChevronDown, Check, Truck, Thermometer, ShieldCheck, FileText, X, Leaf } from 'lucide-react-native';
+import { ChevronDown, Check, Truck, Thermometer, ShieldCheck, FileText, Leaf } from 'lucide-react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { supabase } from '../../supabase';
 import OSMAutocomplete from '../OSMAutocomplete';
-import { resolveRouting, logShipmentEvent } from '../../utils/routingService';
+import QRCodeCard from '../QRCodeCard';
+import { buildShipmentQrPayload } from '../../utils/qrPayload';
+import { generateVerificationCode, resolveRouting, logShipmentEvent } from '../../utils/routingService';
 import { DEMO_CUSTOMER_ID } from '../../utils/customerData';
 
 const PRODUCE_CATEGORIES = [
@@ -75,6 +77,8 @@ export default function CreateAgroShipmentTab({ customerId }: { customerId?: str
   const [loading, setLoading]           = useState(false);
   const [success, setSuccess]           = useState('');
   const [error, setError]               = useState('');
+  const [pickupOtp, setPickupOtp]       = useState('');
+  const [deliveryOtp, setDeliveryOtp]   = useState('');
 
   const handleSubmit = async () => {
     if (!senderName || !pickupData || !recipientName || !deliveryData || !produceCategory || !vehicleType || !tonnage) {
@@ -87,6 +91,8 @@ export default function CreateAgroShipmentTab({ customerId }: { customerId?: str
       const routing = await resolveRouting(pickupData.address, deliveryData.address);
       const trackId = `RNX-AG-${Math.floor(100000 + Math.random() * 900000)}`;
       const tons = parseFloat(tonnage) || 0;
+      const pickupVerificationCode = generateVerificationCode();
+      const deliveryVerificationCode = generateVerificationCode();
       // Force manual_review for heavy bulk loads (>5 tonnes needs linehaul coordination)
       const finalRouting = tons > 5 ? { ...routing, routing_mode: 'manual_review' as const, dispatch_stage: 'pending_routing' as const } : routing;
 
@@ -97,6 +103,7 @@ export default function CreateAgroShipmentTab({ customerId }: { customerId?: str
         recipient_name: recipientName, recipient_phone: recipientPhone,
         delivery_address: deliveryData.address, delivery_lat: deliveryData.lat, delivery_lon: deliveryData.lon,
         status: 'Pending', routing_mode: finalRouting.routing_mode, dispatch_stage: finalRouting.dispatch_stage,
+        pickup_otp: pickupVerificationCode, delivery_otp: deliveryVerificationCode,
         pickup_state: finalRouting.pickup_state, delivery_state: finalRouting.delivery_state,
         source_terminal_id: finalRouting.source_terminal_id, destination_terminal_id: finalRouting.destination_terminal_id,
         is_agro_shipment: true, agro_produce_category: produceCategory, agro_vehicle_type: vehicleType,
@@ -106,7 +113,50 @@ export default function CreateAgroShipmentTab({ customerId }: { customerId?: str
       }).select('id').single();
 
       if (dbErr) throw dbErr;
-      if (ship?.id) await logShipmentEvent(ship.id, finalRouting.dispatch_stage, undefined, cid, 'customer', `Agro booking: ${produceCategory}`);
+      if (ship?.id) {
+        await logShipmentEvent(ship.id, finalRouting.dispatch_stage, undefined, cid, 'customer', `Agro booking: ${produceCategory}`);
+
+        const notificationRows = [
+          senderPhone && pickupVerificationCode
+            ? {
+                shipment_id: ship.id,
+                customer_id: cid,
+                channel: 'sms',
+                recipient: senderPhone,
+                template_key: 'pickup_otp',
+                title: 'RENAX Pickup OTP',
+                body: `Your RENAX pickup verification code for ${trackId} is ${pickupVerificationCode}.`,
+                payload: {
+                  tracking_id: trackId,
+                  otp: pickupVerificationCode,
+                  role: 'sender',
+                },
+              }
+            : null,
+          recipientPhone && deliveryVerificationCode
+            ? {
+                shipment_id: ship.id,
+                customer_id: cid,
+                channel: 'sms',
+                recipient: recipientPhone,
+                template_key: 'delivery_otp',
+                title: 'RENAX Delivery OTP',
+                body: `Your RENAX delivery verification code for ${trackId} is ${deliveryVerificationCode}.`,
+                payload: {
+                  tracking_id: trackId,
+                  otp: deliveryVerificationCode,
+                  role: 'recipient',
+                },
+              }
+            : null,
+        ].filter(Boolean);
+
+        if (notificationRows.length > 0) {
+          await supabase.from('notification_delivery_queue').insert(notificationRows);
+        }
+      }
+      setPickupOtp(pickupVerificationCode);
+      setDeliveryOtp(deliveryVerificationCode);
       setSuccess(trackId);
     } catch (e: any) {
       setError(e?.message || 'Booking failed. Try again.');
@@ -119,8 +169,53 @@ export default function CreateAgroShipmentTab({ customerId }: { customerId?: str
       <Text style={s.successTitle}>Agro Booking Confirmed</Text>
       <Text style={s.successId}>{success}</Text>
       <Text style={s.successSub}>Your produce is registered in the RENAX system. A coordinator will confirm vehicle assignment.</Text>
-      <Pressable style={s.btn} onPress={() => setSuccess('')}>
-        <Text style={s.btnText}>Book Another</Text>
+      <View style={s.successProofBox}>
+        <Text style={s.successProofTitle}>Verification Codes</Text>
+        <Text style={s.successProofLine}>Pickup OTP: {pickupOtp}</Text>
+        <Text style={s.successProofLine}>Delivery OTP: {deliveryOtp}</Text>
+        <View style={s.qrGrid}>
+          <QRCodeCard
+            label="Pickup QR"
+            value={pickupOtp}
+            payload={buildShipmentQrPayload({
+              type: 'pickup',
+              otp: pickupOtp,
+              trackingId: success,
+            })}
+            note="Rider scans this from the sender phone at farm collection."
+            size={132}
+          />
+          <QRCodeCard
+            label="Delivery QR"
+            value={deliveryOtp}
+            payload={buildShipmentQrPayload({
+              type: 'delivery',
+              otp: deliveryOtp,
+              trackingId: success,
+            })}
+            note="Rider scans this from the recipient phone at market handoff."
+            size={132}
+          />
+        </View>
+      </View>
+      <Pressable style={s.btn} onPress={() => {
+        setSuccess('');
+        setSenderName('');
+        setSenderPhone('');
+        setPickupData(null);
+        setRecipientName('');
+        setRecipientPhone('');
+        setDeliveryData(null);
+        setProduceCategory('');
+        setTonnage('');
+        setVehicleType('');
+        setInsured(false);
+        setColdChain(false);
+        setHandlingNotes('');
+        setPickupOtp('');
+        setDeliveryOtp('');
+      }}>
+        <Text style={s.btnText}>Done / Book Another</Text>
       </Pressable>
     </Animated.View>
   );
@@ -142,7 +237,7 @@ export default function CreateAgroShipmentTab({ customerId }: { customerId?: str
         <TextInput style={s.input} placeholder="Sender / Farm Name" placeholderTextColor="#aaa" onChangeText={setSenderName} />
         <TextInput style={s.input} placeholder="Phone Number" placeholderTextColor="#aaa" keyboardType="phone-pad" onChangeText={setSenderPhone} />
         <Text style={s.label}>Pickup / Farm Location</Text>
-        <OSMAutocomplete placeholder="Search farm or warehouse address..." onSelect={setPickupData} />
+        <OSMAutocomplete placeholder="Search farm or warehouse address..." onSelect={setPickupData} onClear={() => setPickupData(null)} />
       </Animated.View>
 
       {/* Recipient */}
@@ -151,7 +246,7 @@ export default function CreateAgroShipmentTab({ customerId }: { customerId?: str
         <TextInput style={s.input} placeholder="Buyer / Dealer Name" placeholderTextColor="#aaa" onChangeText={setRecipientName} />
         <TextInput style={s.input} placeholder="Phone Number" placeholderTextColor="#aaa" keyboardType="phone-pad" onChangeText={setRecipientPhone} />
         <Text style={s.label}>Delivery / Market Address</Text>
-        <OSMAutocomplete placeholder="Search market or buyer address..." onSelect={setDeliveryData} />
+        <OSMAutocomplete placeholder="Search market or buyer address..." onSelect={setDeliveryData} onClear={() => setDeliveryData(null)} />
       </Animated.View>
 
       {/* Produce Details */}
@@ -254,4 +349,8 @@ const s = StyleSheet.create({
   successTitle: { fontFamily: 'PlusJakartaSans_7', fontSize: 24, color: '#004d3d' },
   successId: { fontFamily: 'PlusJakartaSans_7', fontSize: 28, color: '#111', letterSpacing: 2 },
   successSub: { fontFamily: 'Outfit_4', fontSize: 14, color: '#666', textAlign: 'center', lineHeight: 22 },
+  successProofBox: { width: '100%', backgroundColor: '#fffbea', borderRadius: 12, borderWidth: 1, borderColor: '#facc15', padding: 14 },
+  successProofTitle: { fontFamily: 'PlusJakartaSans_6', fontSize: 13, color: '#854d0e', textAlign: 'center', marginBottom: 6 },
+  successProofLine: { fontFamily: 'Outfit_6', fontSize: 13, color: '#713f12', textAlign: 'center', marginBottom: 2 },
+  qrGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 12 },
 });

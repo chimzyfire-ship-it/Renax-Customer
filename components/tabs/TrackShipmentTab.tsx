@@ -2,17 +2,18 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, Pressable,
-  TextInput, useWindowDimensions, ActivityIndicator,
+  TextInput, useWindowDimensions, ActivityIndicator, Linking, Image,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import {
   Search, Truck, Clock, MapPin, Navigation, AlertCircle,
-  CheckCircle, Circle, Radio, Map, Bike
+  CheckCircle, Circle, Radio, Map, Bike, AlertTriangle, ShieldCheck,
 } from 'lucide-react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { supabase } from '../../supabase';
 import TrackingMap from '../maps/TrackingMap';
-import { shipmentStatusFromStage, stageColor, stageLabel, stageProgress } from '../../utils/routingService';
+import { shipmentStatusFromStage, stageColor, stageLabel, stageProgress, stageProofLabel } from '../../utils/routingService';
+import { getTrustBand, TRUST_BAND_LABELS, TRUST_BAND_COLORS, ARRIVED_AT_DISPLAY_MODEL } from '../../utils/stageRules';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const formatDate = (dateStr: string) => {
@@ -22,6 +23,53 @@ const formatDate = (dateStr: string) => {
     hour: '2-digit', minute: '2-digit',
   });
 };
+
+// ── Exception messaging map ────────────────────────────────────────────────────
+type ExceptionContext = {
+  icon: string;
+  title: string;
+  body: string;
+  color: string;
+};
+
+function getExceptionContext(stage: string, notes?: string): ExceptionContext | null {
+  const n = (notes || '').toLowerCase();
+  if (stage !== 'exception') return null;
+
+  if (n.includes('delay') || n.includes('traffic') || n.includes('weather')) {
+    return { icon: 'delayed', title: 'Shipment Delayed', body: 'Your shipment is experiencing a delay. We are working to get it moving as soon as possible.', color: '#F59E0B' };
+  }
+  if (n.includes('reroute') || n.includes('redirect') || n.includes('alternate')) {
+    return { icon: 'rerouted', title: 'Shipment Rerouted', body: 'Your shipment has been redirected to an alternate route. Estimated delivery may be affected.', color: '#7C3AED' };
+  }
+  if (n.includes('hub') || n.includes('terminal') || n.includes('intake') || n.includes('awaiting')) {
+    return { icon: 'hub', title: 'Awaiting Hub Intake', body: 'Your shipment is waiting to be checked in at the hub. No action required from you.', color: '#3B82F6' };
+  }
+  if (n.includes('failed') || n.includes('undeliverable') || n.includes('absent') || n.includes('no access')) {
+    return { icon: 'failed', title: 'Failed Delivery Attempt', body: 'A delivery attempt was made but was unsuccessful. Our team will try again or contact you shortly.', color: '#DC2626' };
+  }
+  // Generic exception
+  return { icon: 'exception', title: 'Shipment Exception', body: 'Your shipment has encountered an issue. A RENAX agent is reviewing and will update the status shortly.', color: '#DC2626' };
+}
+
+// ── Trust label helpers ────────────────────────────────────────────────────────
+function proofTrustTag(proof: any): { label: string; color: string; bg: string } {
+  const type = proof?.proof_type || '';
+  const role = proof?.verified_by_role || 'system';
+  if (type === 'geofence_auto' || role === 'system') {
+    return { label: 'Suggested', color: '#B45309', bg: 'rgba(245,158,11,0.1)' };
+  }
+  if (type === 'manual_admin' || role === 'admin') {
+    return { label: 'Admin Verified', color: '#047857', bg: 'rgba(16,185,129,0.1)' };
+  }
+  if (type === 'otp' || type === 'pickup_otp' || type === 'delivery_otp') {
+    return { label: 'OTP Verified', color: '#004d3d', bg: 'rgba(0,77,61,0.08)' };
+  }
+  if (type === 'photo' || type === 'signature') {
+    return { label: 'Photo Verified', color: '#2563EB', bg: 'rgba(37,99,235,0.1)' };
+  }
+  return { label: 'System', color: '#6B7280', bg: 'rgba(107,114,128,0.1)' };
+}
 
 // ─── Component ────────────────────────────────────────────────────────────────
 type TrackShipmentTabProps = {
@@ -38,11 +86,33 @@ export default function TrackShipmentTab({ initialTrackingId = '', autoTrackSign
   const [searchQuery, setSearchQuery]     = useState('');
   const [shipmentData, setShipmentData]   = useState<any>(null);
   const [timelineEvents, setTimelineEvents] = useState<any[]>([]);
+  const [proofRecords, setProofRecords]   = useState<any[]>([]);
   const [isLoading, setIsLoading]         = useState(false);
   const [error, setError]                 = useState('');
   const [showMap, setShowMap]             = useState(false);
   const [terminalSummary, setTerminalSummary] = useState<{ source?: any; destination?: any }>({});
+  const [arrivedAtSuggestions, setArrivedAtSuggestions] = useState<string[]>([]); // active arrived_at suggestion stages
   const channelRef = useRef<any>(null);
+
+  const resolveProofMediaUrls = async (proofs: any[]) => {
+    const resolved = await Promise.all((proofs || []).map(async (proof) => {
+      const mediaPath = String(proof?.media_url || '').trim();
+      if (!mediaPath || mediaPath.startsWith('data:') || mediaPath.startsWith('http://') || mediaPath.startsWith('https://')) {
+        return proof;
+      }
+
+      const { data, error } = await supabase.storage.from('shipment-proofs').createSignedUrl(mediaPath, 60 * 30);
+      if (error || !data?.signedUrl) return { ...proof, media_url: null };
+      return { ...proof, media_url: data.signedUrl };
+    }));
+
+    return resolved;
+  };
+
+  const resolveProofMediaUrl = async (proof: any) => {
+    const [resolved] = await resolveProofMediaUrls([proof]);
+    return resolved;
+  };
 
   // ─── Track handler ────────────────────────────────────────────────────────
   const runTrackQuery = async (trackingId: string) => {
@@ -52,6 +122,7 @@ export default function TrackShipmentTab({ initialTrackingId = '', autoTrackSign
     setIsLoading(true);
     setShipmentData(null);
     setTimelineEvents([]);
+    setProofRecords([]);
     setShowMap(false);
 
     try {
@@ -82,6 +153,21 @@ export default function TrackShipmentTab({ initialTrackingId = '', autoTrackSign
         .eq('shipment_id', shipment.id)
         .order('created_at', { ascending: true });
       setTimelineEvents(events || []);
+
+      const { data: proofs } = await supabase
+        .from('shipment_stage_proofs')
+        .select('*')
+        .eq('shipment_id', shipment.id)
+        .order('created_at', { ascending: false });
+      setProofRecords(await resolveProofMediaUrls(proofs || []));
+      // Fetch arrived_at suggestions (suggestion-only stages for customer display)
+      const { data: suggestions } = await supabase
+        .from('shipment_stage_suggestions')
+        .select('suggested_stage, suggestion_status')
+        .eq('shipment_id', shipment.id)
+        .eq('suggestion_status', 'pending')
+        .in('suggested_stage', ['arrived_at_pickup', 'arrived_at_delivery']);
+      setArrivedAtSuggestions((suggestions || []).map((s: any) => s.suggested_stage));
     } catch {
       setError('Network error. Please try again.');
     } finally {
@@ -127,6 +213,26 @@ export default function TrackShipmentTab({ initialTrackingId = '', autoTrackSign
       }, (payload: any) => {
         setTimelineEvents(prev => [...prev, payload.new]);
       })
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'shipment_stage_proofs',
+        filter: `shipment_id=eq.${shipmentData.id}`,
+      }, async (payload: any) => {
+        const resolvedProof = await resolveProofMediaUrl(payload.new);
+        setProofRecords(prev => [resolvedProof, ...prev]);
+      })
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'shipment_stage_suggestions',
+        filter: `shipment_id=eq.${shipmentData.id}`,
+      }, (payload: any) => {
+        const s = payload.new;
+        if (['arrived_at_pickup', 'arrived_at_delivery'].includes(s.suggested_stage) && s.suggestion_status === 'pending') {
+          setArrivedAtSuggestions(prev => [...new Set([...prev, s.suggested_stage])]);
+        }
+      })
       .subscribe();
 
     return () => {
@@ -143,6 +249,19 @@ export default function TrackShipmentTab({ initialTrackingId = '', autoTrackSign
   const progress = shipmentData ? stageProgress(currentStage, currentRoutingMode) : 0;
   const hasCoords   = shipmentData?.pickup_lat && shipmentData?.delivery_lat;
   const isDelivered = currentStage === 'delivered' || shipmentData?.status?.toLowerCase() === 'delivered';
+  const trustScore = Number(shipmentData?.latest_stage_confidence ?? 0.5);
+  const trustBand = getTrustBand(trustScore);
+  const trustLabel = TRUST_BAND_LABELS[trustBand];
+  const trustColor = TRUST_BAND_COLORS[trustBand];
+  const isException = currentStage === 'exception';
+  const latestExceptionNote = timelineEvents.filter(e => e.stage === 'exception' || e.status === 'exception').slice(-1)[0]?.notes;
+  const exceptionCtx = isException ? getExceptionContext(currentStage, latestExceptionNote) : null;
+  const photoProofs = proofRecords.filter((p: any) => p.media_url);
+  const nonPhotoProofs = proofRecords.filter((p: any) => !p.media_url);
+  // Arrived-at pills: filter by current routing mode
+  const arrivedAtPills = ARRIVED_AT_DISPLAY_MODEL.filter(
+    m => arrivedAtSuggestions.includes(m.stage) && m.routingModes.includes(currentRoutingMode as any)
+  );
 
   return (
     <ScrollView style={styles.root} contentContainerStyle={{ padding: isCompact ? 16 : isMobile ? 20 : 32, paddingBottom: 60 }}>
@@ -230,11 +349,54 @@ export default function TrackShipmentTab({ initialTrackingId = '', autoTrackSign
             <Text style={styles.progressLabel}>{progress}% Complete</Text>
           </View>
 
+          {/* ── Arrived-at suggestion pills (suggestion-only stages) ── */}
+          {arrivedAtPills.length > 0 && (
+            <View style={{ gap: 10, marginBottom: 14 }}>
+              {arrivedAtPills.map(pill => (
+                <Animated.View key={pill.stage} entering={FadeInDown.duration(400)} style={styles.arrivedAtPill}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                    <Navigation color="#B45309" size={15} />
+                    <Text style={styles.arrivedAtPillTitle}>{pill.label}</Text>
+                    <View style={styles.arrivedAtBadge}>
+                      <Text style={styles.arrivedAtBadgeText}>Suggested</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.arrivedAtPillBody}>{pill.description}</Text>
+                </Animated.View>
+              ))}
+            </View>
+          )}
+
           {/* ── Realtime badge ── */}
           <View style={styles.realtimeBadge}>
             <View style={styles.realtimeDot} />
             <Text style={styles.realtimeText}>LIVE — Auto-updates when status changes</Text>
           </View>
+
+
+          {/* ── Trust Banner ── */}
+          <View style={[styles.trustBanner, { borderColor: trustColor + '44', backgroundColor: trustColor + '0d' }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+              <ShieldCheck color={trustColor} size={16} />
+              <Text style={[styles.trustBannerTitle, { color: trustColor }]}>{trustLabel}</Text>
+            </View>
+            <Text style={styles.trustBannerSub}>
+              {shipmentData?.latest_stage_proof_summary
+                ? `Latest milestone was backed by ${shipmentData.latest_stage_proof_summary.toLowerCase()}.`
+                : 'This shipment is still waiting on proof-backed milestone evidence.'}
+            </Text>
+          </View>
+
+          {/* ── Exception Banner ── */}
+          {exceptionCtx && (
+            <Animated.View entering={FadeInDown.duration(400)} style={[styles.exceptionBanner, { borderColor: exceptionCtx.color + '55', backgroundColor: exceptionCtx.color + '10' }]}>
+              <AlertTriangle color={exceptionCtx.color} size={20} />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.exceptionTitle, { color: exceptionCtx.color }]}>{exceptionCtx.title}</Text>
+                <Text style={styles.exceptionBody}>{exceptionCtx.body}</Text>
+              </View>
+            </Animated.View>
+          )}
 
           {/* ── Main grid ── */}
           <View style={[styles.mainGrid, isMobile && { flexDirection: 'column' }]}>
@@ -364,6 +526,68 @@ export default function TrackShipmentTab({ initialTrackingId = '', autoTrackSign
                 <Text style={[styles.statusPillText, { color: statusColor }]}>{displayStatus}</Text>
               </View>
 
+              {/* ── Stage Evidence & Photo Gallery ── */}
+              <View style={styles.proofCard}>
+                <Text style={styles.proofCardTitle}>Stage Evidence</Text>
+
+                {/* Photo Gallery */}
+                {photoProofs.length > 0 && (
+                  <View style={{ marginBottom: 14 }}>
+                    <Text style={styles.proofGalleryLabel}>Proof Photos ({photoProofs.length})</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
+                      <View style={{ flexDirection: 'row', gap: 10 }}>
+                        {photoProofs.map((proof: any, index: number) => {
+                          const tag = proofTrustTag(proof);
+                          return (
+                            <Pressable
+                              key={`photo-${proof.id || index}`}
+                              style={styles.proofPhotoCard}
+                              onPress={() => Linking.openURL(proof.media_url)}
+                            >
+                              <Image
+                                source={{ uri: proof.media_url }}
+                                style={styles.proofPhotoThumb}
+                                resizeMode="cover"
+                              />
+                              <View style={[styles.proofTrustTag, { backgroundColor: tag.bg }]}>
+                                <Text style={[styles.proofTrustTagText, { color: tag.color }]}>{tag.label}</Text>
+                              </View>
+                              <Text style={styles.proofPhotoStage}>{stageLabel(proof.stage || currentStage)}</Text>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                    </ScrollView>
+                  </View>
+                )}
+
+                {/* Evidence list */}
+                {nonPhotoProofs.length === 0 && photoProofs.length === 0 ? (
+                  <Text style={styles.proofCardSub}>No verification proofs have been attached yet.</Text>
+                ) : (
+                  nonPhotoProofs.slice(0, 6).map((proof: any, index: number) => {
+                    const tag = proofTrustTag(proof);
+                    return (
+                      <View key={`${proof.id || proof.created_at}-${index}`} style={styles.proofRow}>
+                        <View style={[styles.proofDot, { backgroundColor: tag.color }]} />
+                        <View style={{ flex: 1 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+                            <Text style={styles.proofType}>{stageProofLabel(proof.proof_type)}</Text>
+                            <View style={[styles.proofTrustTag, { backgroundColor: tag.bg }]}>
+                              <Text style={[styles.proofTrustTagText, { color: tag.color }]}>{tag.label}</Text>
+                            </View>
+                          </View>
+                          <Text style={styles.proofStage}>{stageLabel(proof.stage || currentStage)}</Text>
+                          <Text style={styles.proofMeta}>
+                            {(proof.verified_by_role || 'system').replace(/_/g, ' ')} • {formatDate(proof.created_at)}
+                          </Text>
+                        </View>
+                      </View>
+                    );
+                  })
+                )}
+              </View>
+
               {/* Rider info if assigned */}
               {shipmentData.assigned_rider_id && (
                 <View style={styles.riderCard}>
@@ -421,9 +645,20 @@ const styles = StyleSheet.create({
   progressTrack: { flex: 1, height: 8, backgroundColor: '#e5e7eb', borderRadius: 4, overflow: 'hidden' },
   progressFill: { height: '100%', borderRadius: 4 },
   progressLabel: { fontFamily: 'Outfit_6', fontSize: 13, color: '#555', minWidth: 90 },
+  arrivedAtPill: { backgroundColor: 'rgba(245,158,11,0.08)', borderWidth: 1, borderColor: 'rgba(245,158,11,0.35)', borderRadius: 14, padding: 14 },
+  arrivedAtPillTitle: { fontFamily: 'Outfit_7', fontSize: 14, color: '#92400E', flex: 1 },
+  arrivedAtPillBody: { fontFamily: 'Outfit_4', fontSize: 13, color: '#78350F', lineHeight: 20 },
+  arrivedAtBadge: { backgroundColor: 'rgba(245,158,11,0.15)', borderRadius: 20, paddingHorizontal: 8, paddingVertical: 3 },
+  arrivedAtBadgeText: { fontFamily: 'Outfit_6', fontSize: 10, color: '#B45309', letterSpacing: 0.5 },
   realtimeBadge: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 24 },
   realtimeDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#10B981', shadowColor: '#10B981', shadowOpacity: 0.8, shadowRadius: 6, shadowOffset: { width: 0, height: 0 } },
   realtimeText: { fontFamily: 'Outfit_6', fontSize: 12, color: '#10B981', letterSpacing: 0.5 },
+  trustBanner: { borderRadius: 14, borderWidth: 1, padding: 14, marginBottom: 16 },
+  trustBannerTitle: { fontFamily: 'PlusJakartaSans_7', fontSize: 15, marginBottom: 4 },
+  trustBannerSub: { fontFamily: 'Outfit_4', fontSize: 13, lineHeight: 20, color: '#444' },
+  exceptionBanner: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, borderRadius: 14, borderWidth: 1, padding: 16, marginBottom: 20 },
+  exceptionTitle: { fontFamily: 'PlusJakartaSans_7', fontSize: 15, marginBottom: 4 },
+  exceptionBody: { fontFamily: 'Outfit_4', fontSize: 13, lineHeight: 20, color: '#444' },
   mainGrid: { flexDirection: 'row', gap: 20 },
   mapCard: { flex: 2, backgroundColor: '#fff', borderRadius: 16, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 12 },
   mapCardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
@@ -457,6 +692,21 @@ const styles = StyleSheet.create({
   statusPill: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8, marginBottom: 16 },
   statusDot: { width: 8, height: 8, borderRadius: 4 },
   statusPillText: { fontFamily: 'Outfit_7', fontSize: 13, letterSpacing: 0.5 },
+  proofCard: { backgroundColor: '#fcfffa', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#d9f99d', marginBottom: 14 },
+  proofCardTitle: { fontFamily: 'Outfit_7', fontSize: 13, color: '#365314', marginBottom: 8 },
+  proofCardSub: { fontFamily: 'Outfit_4', fontSize: 12, lineHeight: 18, color: '#4b5563' },
+  proofGalleryLabel: { fontFamily: 'Outfit_6', fontSize: 12, color: '#365314', letterSpacing: 0.5 },
+  proofPhotoCard: { width: 110, borderRadius: 10, overflow: 'hidden', borderWidth: 1, borderColor: '#d9f99d', backgroundColor: '#f0fdf4' },
+  proofPhotoThumb: { width: 110, height: 80 },
+  proofPhotoStage: { fontFamily: 'Outfit_4', fontSize: 11, color: '#365314', paddingHorizontal: 8, paddingBottom: 6, marginTop: 4 },
+  proofTrustTag: { borderRadius: 4, paddingHorizontal: 8, paddingVertical: 2, alignSelf: 'flex-start', marginHorizontal: 8, marginTop: 4 },
+  proofTrustTagText: { fontFamily: 'Outfit_7', fontSize: 10, letterSpacing: 0.5 },
+  proofRow: { flexDirection: 'row', gap: 10, alignItems: 'flex-start', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#ecfccb' },
+  proofDot: { width: 8, height: 8, borderRadius: 4, marginTop: 6 },
+  proofType: { fontFamily: 'Outfit_7', fontSize: 13, color: '#1f2937' },
+  proofStage: { fontFamily: 'Outfit_4', fontSize: 12, color: '#365314', marginTop: 2 },
+  proofMeta: { fontFamily: 'Outfit_4', fontSize: 11, color: '#6b7280', marginTop: 2, textTransform: 'capitalize' },
+  proofLink: { fontFamily: 'Outfit_6', fontSize: 12, color: '#047857', marginTop: 6 },
   riderCard: { backgroundColor: 'rgba(204,253,58,0.08)', borderRadius: 12, padding: 16, borderWidth: 1, borderColor: 'rgba(204,253,58,0.25)', marginBottom: 12 },
   riderCardTitle: { fontFamily: 'PlusJakartaSans_7', fontSize: 15, color: '#004d3d' },
   riderCardSub: { fontFamily: 'Outfit_4', fontSize: 13, color: '#555' },
