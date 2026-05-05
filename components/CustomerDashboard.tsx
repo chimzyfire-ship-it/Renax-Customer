@@ -532,7 +532,18 @@ export default function CustomerDashboard({ userState = 'Lagos', userName = 'Ade
                       <Text style={[styles.bookingCell, styles.bookingLink]}>{booking.tracking_id || booking.id}</Text>
                       <Text style={styles.bookingCell}>{booking.delivery_address || 'N/A'}</Text>
                       <Text style={styles.bookingCell}>{booking.status || 'Pending'}</Text>
-                      <Pressable onPress={() => handleTrackShipment(booking.tracking_id || booking.id)} style={{ flex: 1, alignItems: 'flex-end' }}><Text style={styles.viewDetails}>Track</Text></Pressable>
+                      <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                        <Pressable 
+                          onPress={() => handleTrackShipment(booking.tracking_id || booking.id)} 
+                          style={({ hovered, pressed }: any) => [
+                            styles.trackActionBtn,
+                            hovered && styles.trackActionBtnHovered,
+                            pressed && styles.trackActionBtnPressed,
+                          ]}
+                        >
+                          <Text style={styles.trackActionBtnText}>Track</Text>
+                        </Pressable>
+                      </View>
                     </Animated.View>
                   ))
                 )}
@@ -847,12 +858,25 @@ const styles = StyleSheet.create({
   bookingRowAlt: { backgroundColor: 'rgba(0,0,0,0.02)' },
   bookingCell: { flex: 1, fontFamily: 'Outfit_4', fontSize: 14, color: '#333' },
   bookingLink: { color: '#004d3d', fontFamily: 'Outfit_6' },
-  viewDetails: {
+  trackActionBtn: {
+    backgroundColor: '#f2f7f5',
+    paddingVertical: 6,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#ccfd3a',
+    ...(Platform.OS === 'web' ? { cursor: 'pointer', transition: 'all 0.2s' } as any : {}),
+  },
+  trackActionBtnHovered: {
+    backgroundColor: '#ccfd3a',
+  },
+  trackActionBtnPressed: {
+    opacity: 0.8,
+  },
+  trackActionBtnText: {
     fontFamily: 'Outfit_6',
     fontSize: 13,
     color: '#004d3d',
-    textAlign: 'right',
-    ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
   },
   emptyBookings: { fontFamily: 'Outfit_4', fontSize: 14, color: '#777', paddingVertical: 20 },
   mobileBookingList: { gap: 14 },

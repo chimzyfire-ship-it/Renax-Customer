@@ -12,39 +12,98 @@ interface OSMResult {
 interface OSMAutocompleteProps {
   placeholder: string;
   onSelect: (data: { address: string; lat: number; lon: number }) => void;
+  onClear?: () => void;
   icon?: React.ReactNode;
 }
 
-export default function OSMAutocomplete({ placeholder, onSelect, icon }: OSMAutocompleteProps) {
+export default function OSMAutocomplete({ placeholder, onSelect, onClear, icon }: OSMAutocompleteProps) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<OSMResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
   const [isFilled, setIsFilled] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
   
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const blurTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const fetchOSMResults = async (text: string, limit = 5): Promise<OSMResult[]> => {
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(text)}&format=json&addressdetails=1&limit=${limit}&countrycodes=ng`;
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'RENAX-Customer-App/1.0',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Nominatim returned ${response.status}`);
+    }
+
+    const data = await response.json();
+    return Array.isArray(data) ? data : [];
+  };
 
   const searchOSM = async (text: string) => {
     if (!text.trim()) {
       setResults([]);
       setShowDropdown(false);
+      setErrorMessage('');
       return;
     }
     
     setLoading(true);
     setShowDropdown(true);
+    setErrorMessage('');
 
     try {
-      const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(text)}&format=json&addressdetails=1&limit=5&countrycodes=ng`;
-      const response = await fetch(url, {
-        headers: {
-          'User-Agent': 'RENAX-Customer-App/1.0',
-        },
-      });
-      const data = await response.json();
+      const data = await fetchOSMResults(text);
       setResults(data);
     } catch (error) {
       console.warn('OSM Fetch Error:', error);
+      setResults([]);
+      setErrorMessage('We could not load address suggestions right now.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const finalizeSelection = (item: OSMResult) => {
+    setQuery(item.display_name);
+    setShowDropdown(false);
+    setResults([]);
+    setErrorMessage('');
+    setIsFilled(true);
+    onSelect({
+      address: item.display_name,
+      lat: parseFloat(item.lat),
+      lon: parseFloat(item.lon)
+    });
+  };
+
+  const resolveTypedAddress = async () => {
+    const text = query.trim();
+    if (!text || isFilled) return;
+
+    setLoading(true);
+    setErrorMessage('');
+
+    try {
+      const searches = [text];
+      if (!/nigeria/i.test(text)) searches.push(`${text}, Nigeria`);
+
+      for (const candidate of searches) {
+        const matches = await fetchOSMResults(candidate, 1);
+        if (matches.length > 0) {
+          finalizeSelection(matches[0]);
+          return;
+        }
+      }
+
+      setErrorMessage('Address not resolved yet. Refine it or choose a suggestion below.');
+      setShowDropdown(true);
+    } catch (error) {
+      console.warn('OSM Resolve Error:', error);
+      setErrorMessage('We could not resolve this typed address. Please try a more specific format.');
     } finally {
       setLoading(false);
     }
@@ -53,9 +112,14 @@ export default function OSMAutocomplete({ placeholder, onSelect, icon }: OSMAuto
   const handleTextChange = (text: string) => {
     setQuery(text);
     setIsFilled(false);
+    setErrorMessage('');
+    onClear?.();
     
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
+    }
+    if (blurTimeoutRef.current) {
+      clearTimeout(blurTimeoutRef.current);
     }
     
     timeoutRef.current = setTimeout(() => {
@@ -64,15 +128,7 @@ export default function OSMAutocomplete({ placeholder, onSelect, icon }: OSMAuto
   };
 
   const handleSelect = (item: OSMResult) => {
-    setQuery(item.display_name);
-    setShowDropdown(false);
-    setResults([]);
-    setIsFilled(true);
-    onSelect({
-      address: item.display_name,
-      lat: parseFloat(item.lat),
-      lon: parseFloat(item.lon)
-    });
+    finalizeSelection(item);
   };
 
   return (
@@ -84,8 +140,14 @@ export default function OSMAutocomplete({ placeholder, onSelect, icon }: OSMAuto
           style={styles.input}
           value={query}
           onChangeText={handleTextChange}
+          onSubmitEditing={resolveTypedAddress}
           onFocus={() => {
             if (results.length > 0) setShowDropdown(true);
+          }}
+          onBlur={() => {
+            blurTimeoutRef.current = setTimeout(() => {
+              resolveTypedAddress();
+            }, 180);
           }}
         />
         {loading ? (
@@ -96,6 +158,8 @@ export default function OSMAutocomplete({ placeholder, onSelect, icon }: OSMAuto
           icon || <Search color="#004d3d" size={16} />
         )}
       </View>
+
+      {!!errorMessage && <Text style={styles.errorText}>{errorMessage}</Text>}
 
       {showDropdown && results.length > 0 && (
         <View style={styles.dropdown}>
@@ -110,6 +174,12 @@ export default function OSMAutocomplete({ placeholder, onSelect, icon }: OSMAuto
               </Pressable>
             )}
           />
+          {!isFilled && query.trim().length >= 6 ? (
+            <Pressable style={styles.useTypedBtn} onPress={resolveTypedAddress}>
+              <CheckCircle2 color="#047857" size={16} style={{ marginRight: 8 }} />
+              <Text style={styles.useTypedText}>Use typed address and calculate from it</Text>
+            </Pressable>
+          ) : null}
         </View>
       )}
     </View>
@@ -142,6 +212,12 @@ const styles = StyleSheet.create({
     color: '#333',
     height: '100%',
   },
+  errorText: {
+    marginTop: 6,
+    fontFamily: 'Outfit_4',
+    fontSize: 12,
+    color: '#B45309',
+  },
   dropdown: {
     position: 'absolute',
     top: 52,
@@ -171,5 +247,19 @@ const styles = StyleSheet.create({
     fontFamily: 'Outfit_4',
     fontSize: 13,
     color: '#444',
+  },
+  useTypedBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#ecfdf5',
+    backgroundColor: '#f0fdf4',
+  },
+  useTypedText: {
+    fontFamily: 'Outfit_6',
+    fontSize: 13,
+    color: '#047857',
   },
 });

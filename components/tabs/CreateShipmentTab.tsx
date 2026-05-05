@@ -2,17 +2,20 @@
 import React, { useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, Pressable, TextInput,
-  useWindowDimensions, Modal, FlatList, ActivityIndicator,
+  useWindowDimensions, Modal, FlatList, ActivityIndicator, Share, Platform,
 } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import {
   ChevronDown, MapPin, Phone, RotateCcw, X, Bike, Truck, Package, Check, CheckCircle2, Download, FileText
 } from 'lucide-react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { supabase } from '../../supabase';
 import OSMAutocomplete from '../OSMAutocomplete';
+import QRCodeCard from '../QRCodeCard';
+import { buildShipmentQrPayload } from '../../utils/qrPayload';
 import { getActualDrivingDistance } from '../../utils/mapService';
 import { chargeWalletForShipment, DEMO_CUSTOMER_ID } from '../../utils/customerData';
-import { logShipmentEvent, resolveRouting } from '../../utils/routingService';
+import { generateVerificationCode, logShipmentEvent, resolveRouting } from '../../utils/routingService';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const NIGERIAN_STATES = [
@@ -62,6 +65,132 @@ const PRICING_FACTORS = {
     'Priority Cargo': 2.5,
   } as Record<string, number>,
 };
+
+async function hasLiveLocalRider(params: { pickupState: string; pickupCity: string }) {
+  const recentCutoff = new Date(Date.now() - 3 * 60 * 1000).toISOString();
+  const { data, error } = await supabase
+    .from('rider_locations')
+    .select('rider_id, last_seen, current_shipment_id, metadata')
+    .eq('is_online', true)
+    .is('current_shipment_id', null)
+    .gte('last_seen', recentCutoff);
+
+  if (error || !data) return false;
+
+  const targetState = params.pickupState.trim().toLowerCase();
+
+  return data.some((row: any) => {
+    const riderState = String(row?.metadata?.state || '').trim().toLowerCase();
+
+    if (!riderState || riderState !== targetState) return false;
+    return true;
+  });
+}
+
+function hasShipmentBeenAccepted(data: any) {
+  if (!data) return false;
+
+  return Boolean(
+    data.assigned_rider_id ||
+    data.final_mile_rider_id ||
+    ['awaiting_source_terminal', 'out_for_delivery', 'delivered'].includes(data.dispatch_stage)
+  );
+}
+
+async function fetchShipmentAssignmentState(shipmentId: string) {
+  const { data, error } = await supabase
+    .from('shipments')
+    .select('assigned_rider_id, final_mile_rider_id, dispatch_stage, status')
+    .eq('id', shipmentId)
+    .maybeSingle();
+
+  if (error) return null;
+  return data;
+}
+
+async function waitForLocalRiderAcceptance(shipmentId: string, timeoutMs = 90000, pollMs = 1500) {
+  const initialState = await fetchShipmentAssignmentState(shipmentId);
+  if (hasShipmentBeenAccepted(initialState)) {
+    return { matched: true, data: initialState };
+  }
+
+  return await new Promise<{ matched: boolean; data: any | null }>((resolve) => {
+    let settled = false;
+    let latestData = initialState;
+
+    const finish = (result: { matched: boolean; data: any | null }) => {
+      if (settled) return;
+      settled = true;
+      clearInterval(pollTimer);
+      clearTimeout(timeoutTimer);
+      supabase.removeChannel(channel);
+      resolve(result);
+    };
+
+    const inspectState = (nextData: any) => {
+      latestData = nextData;
+      if (hasShipmentBeenAccepted(nextData)) {
+        finish({ matched: true, data: nextData });
+      }
+    };
+
+    const channel = supabase
+      .channel(`customer-match-${shipmentId}`)
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'shipments',
+        filter: `id=eq.${shipmentId}`,
+      }, (payload: any) => {
+        inspectState(payload.new);
+      })
+      .subscribe();
+
+    const pollTimer = setInterval(async () => {
+      const nextData = await fetchShipmentAssignmentState(shipmentId);
+      if (nextData) {
+        inspectState(nextData);
+      }
+    }, pollMs);
+
+    const timeoutTimer = setTimeout(async () => {
+      const finalState = await fetchShipmentAssignmentState(shipmentId);
+      if (hasShipmentBeenAccepted(finalState)) {
+        finish({ matched: true, data: finalState });
+        return;
+      }
+      finish({ matched: false, data: finalState || latestData || null });
+    }, timeoutMs);
+  });
+}
+
+async function cancelUnassignedLocalShipment(shipmentId: string) {
+  const latestState = await fetchShipmentAssignmentState(shipmentId);
+  if (hasShipmentBeenAccepted(latestState)) {
+    return { cancelled: false, accepted: true, data: latestState };
+  }
+
+  const { error } = await supabase
+    .from('shipments')
+    .update({
+      status: 'Cancelled',
+      dispatch_stage: 'cancelled',
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', shipmentId)
+    .eq('dispatch_stage', 'awaiting_rider_acceptance')
+    .is('assigned_rider_id', null)
+    .is('final_mile_rider_id', null);
+
+  if (error) {
+    const refreshedState = await fetchShipmentAssignmentState(shipmentId);
+    if (hasShipmentBeenAccepted(refreshedState)) {
+      return { cancelled: false, accepted: true, data: refreshedState };
+    }
+  }
+
+  return { cancelled: true, accepted: false, data: null };
+}
 
 // ─── Reusable Modal Picker ─────────────────────────────────────────────────────
 interface PickerModalProps {
@@ -130,12 +259,26 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
   // Modals & Submit State
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [createdOrderId, setCreatedOrderId] = useState('');
+  const [pickupOtp, setPickupOtp] = useState('');
+  const [deliveryOtp, setDeliveryOtp] = useState('');
   const [isCalculating, setIsCalculating] = useState(false);
   const [formError, setFormError] = useState('');
   const [actualDistance, setActualDistance] = useState<number | null>(null);
+  const [queueInsertFailed, setQueueInsertFailed] = useState(false);
+  const [resendingOtp, setResendingOtp] = useState(false);
+  const [resendSuccess, setResendSuccess] = useState(false);
+  const [copiedOtp, setCopiedOtp] = useState<'pickup' | 'delivery' | null>(null);
   // Rider search state
   const [searchingRiders, setSearchingRiders] = useState(false);
   const [noRidersFound, setNoRidersFound] = useState(false);
+  const [matchCountdown, setMatchCountdown] = useState(90);
+  const [pendingLocalMatch, setPendingLocalMatch] = useState<{
+    shipmentId: string;
+    trackingId: string;
+    pickupOtp: string;
+    deliveryOtp: string;
+    customerId?: string;
+  } | null>(null);
 
   // Pickers visibility
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
@@ -143,6 +286,63 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
 
   // Submit state
   const [loading, setLoading] = useState(false);
+
+  React.useEffect(() => {
+    if (!searchingRiders) return;
+    setMatchCountdown(90);
+    const timer = setInterval(() => {
+      setMatchCountdown((value) => (value > 0 ? value - 1 : 0));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [searchingRiders]);
+
+  const retryPendingLocalMatch = async () => {
+    if (!pendingLocalMatch) return;
+
+    setFormError('');
+    setNoRidersFound(false);
+    setSearchingRiders(true);
+    setLoading(true);
+
+    await supabase
+      .from('shipments')
+      .update({
+        status: 'Pending',
+        dispatch_stage: 'awaiting_rider_acceptance',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', pendingLocalMatch.shipmentId);
+
+    const acceptance = await waitForLocalRiderAcceptance(pendingLocalMatch.shipmentId);
+    setSearchingRiders(false);
+    setLoading(false);
+
+    if (!acceptance.matched) {
+      const cancellation = await cancelUnassignedLocalShipment(pendingLocalMatch.shipmentId);
+      if (cancellation.accepted) {
+        setCreatedOrderId(pendingLocalMatch.trackingId);
+        setPickupOtp(pendingLocalMatch.pickupOtp);
+        setDeliveryOtp(pendingLocalMatch.deliveryOtp);
+        setPendingLocalMatch(null);
+        setNoRidersFound(false);
+        setFormError('');
+        setShowReceiptModal(true);
+        return;
+      }
+
+      setNoRidersFound(true);
+      setFormError('No rider accepted this intra-state shipment yet. This request was closed and removed from rider screens until you refresh it.');
+      return;
+    }
+
+    setCreatedOrderId(pendingLocalMatch.trackingId);
+    setPickupOtp(pendingLocalMatch.pickupOtp);
+    setDeliveryOtp(pendingLocalMatch.deliveryOtp);
+    setPendingLocalMatch(null);
+    setNoRidersFound(false);
+    setFormError('');
+    setShowReceiptModal(true);
+  };
 
   // ── Derived State & Calculations ─────────────────────────────────────────────
   const isStep1Complete = !!(senderName && senderPhone && pickupData);
@@ -233,6 +433,17 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
         deliveryData?.address || ''
       );
 
+      const isSameStateLocalShipment =
+        routing.routing_mode === 'last_mile_local' &&
+        routing.pickup_state.trim().toLowerCase() === routing.delivery_state.trim().toLowerCase();
+
+      if (isSameStateLocalShipment) {
+        setSearchingRiders(true);
+        setNoRidersFound(false);
+      } else {
+        setNoRidersFound(false);
+      }
+
       // Generate Order ID
       const generatedId = `RNX-${Math.floor(100000 + Math.random() * 900000)}`;
       const shipmentType = detectShipmentType(
@@ -240,6 +451,9 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
         deliveryData?.address || ''
       );
       
+      const pickupVerificationCode = generateVerificationCode();
+      const deliveryVerificationCode = generateVerificationCode();
+
       const { data: createdShipment, error } = await supabase
         .from('shipments')
         .insert({
@@ -266,6 +480,8 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
           estimated_price:   estimatedPrice,
           shipment_type:     shipmentType,
           status:            'Pending',
+          pickup_otp:        pickupVerificationCode,
+          delivery_otp:      deliveryVerificationCode,
           routing_mode:      routing.routing_mode,
           dispatch_stage:    routing.dispatch_stage,
           pickup_state:      routing.pickup_state,
@@ -292,6 +508,80 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
           'customer',
           routing.reason
         );
+
+        const notificationRows = [
+          senderPhone && pickupVerificationCode
+            ? {
+                shipment_id: createdShipment.id,
+                customer_id: resolvedCustomerId,
+                channel: 'sms',
+                recipient: senderPhone,
+                template_key: 'pickup_otp',
+                title: 'RENAX Pickup OTP',
+                body: `Your RENAX pickup verification code for ${generatedId} is ${pickupVerificationCode}.`,
+                payload: {
+                  tracking_id: generatedId,
+                  otp: pickupVerificationCode,
+                  role: 'sender',
+                },
+              }
+            : null,
+          recipientPhone && deliveryVerificationCode
+            ? {
+                shipment_id: createdShipment.id,
+                customer_id: resolvedCustomerId,
+                channel: 'sms',
+                recipient: recipientPhone,
+                template_key: 'delivery_otp',
+                title: 'RENAX Delivery OTP',
+                body: `Your RENAX delivery verification code for ${generatedId} is ${deliveryVerificationCode}.`,
+                payload: {
+                  tracking_id: generatedId,
+                  otp: deliveryVerificationCode,
+                  role: 'recipient',
+                },
+              }
+            : null,
+        ].filter(Boolean);
+
+        if (notificationRows.length > 0) {
+          try {
+            const { error: queueErr } = await supabase
+              .from('notification_delivery_queue')
+              .insert(notificationRows);
+            if (queueErr) setQueueInsertFailed(true);
+          } catch {
+            setQueueInsertFailed(true);
+          }
+        }
+      }
+
+      // Intra-state local shipments remain provisional until a rider actually accepts.
+      if (isSameStateLocalShipment && createdShipment?.id) {
+        setPendingLocalMatch({
+          shipmentId: createdShipment.id,
+          trackingId: createdShipment.tracking_id || generatedId,
+          pickupOtp: pickupVerificationCode,
+          deliveryOtp: deliveryVerificationCode,
+          customerId: resolvedCustomerId,
+        });
+        setSearchingRiders(true);
+        setNoRidersFound(false);
+
+        const acceptance = await waitForLocalRiderAcceptance(createdShipment.id);
+        setSearchingRiders(false);
+
+        if (!acceptance.matched) {
+          const cancellation = await cancelUnassignedLocalShipment(createdShipment.id);
+          if (cancellation.accepted) {
+            setSearchingRiders(false);
+          } else {
+            setNoRidersFound(true);
+            setFormError('No rider accepted this intra-state shipment yet. This request was closed and removed from rider screens until you refresh it.');
+            setLoading(false);
+            return;
+          }
+        }
       }
 
       if (payMethod === 'RENAX Wallet' && createdShipment?.id) {
@@ -304,24 +594,13 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
       }
 
       setCreatedOrderId(generatedId);
+      setPickupOtp(pickupVerificationCode);
+      setDeliveryOtp(deliveryVerificationCode);
+      setPendingLocalMatch(null);
+      setNoRidersFound(false);
+      setSearchingRiders(false);
+      setResendSuccess(false);
       setShowReceiptModal(true);
-
-      // Only search for riders when the routing engine sends the job to the local marketplace.
-      if (routing.routing_mode === 'last_mile_local') {
-        setSearchingRiders(true);
-        setNoRidersFound(false);
-        setTimeout(async () => {
-          const { data } = await supabase
-            .from('shipments')
-            .select('assigned_rider_id, dispatch_stage')
-            .eq('tracking_id', generatedId)
-            .single();
-          setSearchingRiders(false);
-          if (!data?.assigned_rider_id && data?.dispatch_stage === 'awaiting_rider_acceptance') {
-            setNoRidersFound(true);
-          }
-        }, 30000);
-      }
     } catch (err: any) {
       console.error("Database Insert Error:", err);
       setFormError(`Database Error: ${err?.message || 'Failed to connect. Please try again.'}`);
@@ -516,6 +795,7 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
           <OSMAutocomplete
             placeholder="Search Pickup Address..."
             onSelect={setPickupData}
+            onClear={() => setPickupData(null)}
             icon={<MapPin color="#004d3d" size={16} />}
           />
           
@@ -549,6 +829,7 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
           <OSMAutocomplete
             placeholder="Search Delivery Address..."
             onSelect={setDeliveryData}
+            onClear={() => setDeliveryData(null)}
             icon={<MapPin color="#004d3d" size={16} />}
           />
           
@@ -678,6 +959,36 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
           </Text>
         </View>
       ) : null}
+      {searchingRiders ? (
+        <View style={styles.matchingBanner}>
+          <ActivityIndicator color="#B45309" size="small" />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.matchingBannerTitle}>Searching live riders across Lagos state...</Text>
+            <Text style={styles.matchingBannerSub}>Waiting for the closest available rider to accept. Time left: {Math.floor(matchCountdown / 60)}:{String(matchCountdown % 60).padStart(2, '0')}</Text>
+          </View>
+        </View>
+      ) : null}
+      {noRidersFound && !loading ? (
+        <View style={{ marginBottom: 16 }}>
+          <Pressable
+            style={[styles.retryBtn, searchingRiders && { opacity: 0.7 }]}
+            onPress={() => {
+              if (pendingLocalMatch) {
+                retryPendingLocalMatch();
+                return;
+              }
+              setFormError('');
+              setNoRidersFound(false);
+              handleCreateShipment();
+            }}
+            disabled={searchingRiders}
+          >
+            <RotateCcw color="#004d3d" size={16} />
+            <Text style={styles.retryBtnText}>REFRESH LIVE RIDER SEARCH</Text>
+          </Pressable>
+          <Text style={styles.retryHint}>We now wait up to 90 seconds for a rider to accept before failing this same-city request.</Text>
+        </View>
+      ) : null}
       <View style={styles.ctaRow}>
         <Pressable
           style={[styles.createBtn, loading && { opacity: 0.7 }]}
@@ -690,7 +1001,7 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
             <FileText color="#fff" size={18} />
           )}
           <Text style={styles.createBtnText}>
-            {loading ? 'CREATING...' : 'CREATE SHIPMENT & GET ORDER ID'}
+            {loading ? (searchingRiders ? 'MATCHING LIVE RIDER...' : 'CREATING...') : 'CREATE SHIPMENT & GET ORDER ID'}
           </Text>
         </Pressable>
         <Pressable style={styles.cancelBtn}>
@@ -702,11 +1013,16 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
             {/* -- Receipt & Confirmation Modal -- */}
       <Modal visible={showReceiptModal} transparent animationType="fade">
         <View style={styles.receiptOverlay}>
-          <View style={styles.receiptModal}>
-            <View style={{ alignItems: 'center', paddingTop: 10 }}>
+          <View style={[styles.receiptModal, { maxHeight: '90%' }]}>
+            <ScrollView contentContainerStyle={{ alignItems: 'center', paddingTop: 10, paddingBottom: 20 }} showsVerticalScrollIndicator={true} indicatorStyle="black">
               <CheckCircle2 color="#10B981" size={50} style={{ marginBottom: 12 }} />
               <Text style={styles.receiptTitle}>Shipment Created!</Text>
               <Text style={styles.receiptSub}>Saved live to the RENAX system.</Text>
+              
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 16, paddingVertical: 6, paddingHorizontal: 12, backgroundColor: 'rgba(0, 77, 61, 0.05)', borderRadius: 20 }}>
+                <Text style={{ fontFamily: 'Outfit_6', fontSize: 12, color: '#004d3d' }}>Scroll down for actions & QR codes</Text>
+                <ChevronDown color="#004d3d" size={14} />
+              </View>
 
               <View style={{ backgroundColor: '#f0fdf4', padding: 12, borderRadius: 12, marginVertical: 12, borderWidth: 1, borderColor: '#bbf7d0', width: '100%', alignItems: 'center' }}>
                 <Text style={{ fontFamily: 'Outfit_6', color: '#047857', marginBottom: 2 }}>Tracking / Order ID</Text>
@@ -731,7 +1047,7 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
                 </View>
               )}
 
-              <ScrollView style={[styles.receiptBody, { width: '100%', maxHeight: 200, marginBottom: 12 }]}>
+              <View style={[styles.receiptBody, { width: '100%', marginBottom: 12 }]}>
                 <View style={styles.receiptRow}>
                   <Text style={styles.receiptLabel}>Sender</Text>
                   <Text style={styles.receiptValue}>{senderName}</Text>
@@ -763,21 +1079,206 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
                     {'\u20a6'}{estimatedPrice.toLocaleString()}
                   </Text>
                 </View>
-              </ScrollView>
+              </View>
+
+              {/* ── OTP / QR Section ── */}
+              {pickupOtp && deliveryOtp ? (
+                <View style={{ width: '100%', marginBottom: 14 }}>
+
+                  {/* Queue insert failed — fallback banner */}
+                  {queueInsertFailed && (
+                    <View style={styles.queueFailBanner}>
+                      <Text style={styles.queueFailTitle}>SMS Notification Queued Offline</Text>
+                      <Text style={styles.queueFailSub}>
+                        Your shipment was created successfully, but we could not queue the SMS at this moment.
+                        Your OTP codes are shown below — please share them manually.
+                      </Text>
+                    </View>
+                  )}
+
+                  {/* Resend success */}
+                  {resendSuccess && (
+                    <View style={styles.resendSuccessBanner}>
+                      <Text style={styles.resendSuccessText}>OTP SMS re-queued successfully!</Text>
+                    </View>
+                  )}
+
+                  {/* QR Grid */}
+                  <View style={styles.qrGrid}>
+                    <QRCodeCard
+                      label="Pickup QR"
+                      value={pickupOtp}
+                      payload={buildShipmentQrPayload({
+                        type: 'pickup',
+                        otp: pickupOtp,
+                        trackingId: createdOrderId,
+                      })}
+                      note="Rider scans this from the sender phone at pickup."
+                      size={124}
+                    />
+                    <QRCodeCard
+                      label="Delivery QR"
+                      value={deliveryOtp}
+                      payload={buildShipmentQrPayload({
+                        type: 'delivery',
+                        otp: deliveryOtp,
+                        trackingId: createdOrderId,
+                      })}
+                      note="Rider scans this from the recipient phone at delivery."
+                      size={124}
+                    />
+                  </View>
+
+                  {/* OTP Action Row — Pickup */}
+                  <View style={styles.otpActionBlock}>
+                    <View style={styles.otpLabelRow}>
+                      <Text style={styles.otpLabel}>PICKUP OTP</Text>
+                      <Text style={styles.otpCode}>{pickupOtp}</Text>
+                    </View>
+                    <View style={styles.otpActionRow}>
+                      <Pressable
+                        style={styles.otpActionBtn}
+                        onPress={async () => {
+                          await Clipboard.setStringAsync(pickupOtp);
+                          setCopiedOtp('pickup');
+                          setTimeout(() => setCopiedOtp(null), 2000);
+                        }}
+                      >
+                        <Text style={styles.otpActionBtnText}>
+                          {copiedOtp === 'pickup' ? '✓ Copied!' : 'Copy OTP'}
+                        </Text>
+                      </Pressable>
+                      <Pressable
+                        style={[styles.otpActionBtn, styles.otpShareBtn]}
+                        onPress={() => Share.share({
+                          message: `Your RENAX pickup OTP for order ${createdOrderId} is: ${pickupOtp}. Show this to the rider at pickup.`,
+                          title: 'RENAX Pickup OTP',
+                        })}
+                      >
+                        <Text style={[styles.otpActionBtnText, { color: '#004d3d' }]}>Share OTP</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+
+                  {/* OTP Action Row — Delivery */}
+                  <View style={styles.otpActionBlock}>
+                    <View style={styles.otpLabelRow}>
+                      <Text style={styles.otpLabel}>DELIVERY OTP</Text>
+                      <Text style={styles.otpCode}>{deliveryOtp}</Text>
+                    </View>
+                    <View style={styles.otpActionRow}>
+                      <Pressable
+                        style={styles.otpActionBtn}
+                        onPress={async () => {
+                          await Clipboard.setStringAsync(deliveryOtp);
+                          setCopiedOtp('delivery');
+                          setTimeout(() => setCopiedOtp(null), 2000);
+                        }}
+                      >
+                        <Text style={styles.otpActionBtnText}>
+                          {copiedOtp === 'delivery' ? '✓ Copied!' : 'Copy OTP'}
+                        </Text>
+                      </Pressable>
+                      <Pressable
+                        style={[styles.otpActionBtn, styles.otpShareBtn]}
+                        onPress={() => Share.share({
+                          message: `Your RENAX delivery OTP for order ${createdOrderId} is: ${deliveryOtp}. Show this to the rider at delivery.`,
+                          title: 'RENAX Delivery OTP',
+                        })}
+                      >
+                        <Text style={[styles.otpActionBtnText, { color: '#004d3d' }]}>Share OTP</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+
+                  {/* Resend OTP Button */}
+                  <Pressable
+                    style={[styles.resendOtpBtn, resendingOtp && { opacity: 0.7 }]}
+                    disabled={resendingOtp}
+                    onPress={async () => {
+                      if (!createdOrderId) return;
+                      setResendingOtp(true);
+                      setResendSuccess(false);
+                      try {
+                        const customerId = pendingLocalMatch?.customerId ?? null;
+                        const rows = [
+                          senderPhone ? {
+                            channel: 'sms',
+                            recipient: senderPhone,
+                            template_key: 'pickup_otp_resend',
+                            title: 'RENAX Pickup OTP (Resent)',
+                            body: `Resent: Your RENAX pickup OTP for ${createdOrderId} is ${pickupOtp}.`,
+                            payload: { tracking_id: createdOrderId, otp: pickupOtp, role: 'sender' },
+                            ...(customerId ? { customer_id: customerId } : {}),
+                          } : null,
+                          recipientPhone ? {
+                            channel: 'sms',
+                            recipient: recipientPhone,
+                            template_key: 'delivery_otp_resend',
+                            title: 'RENAX Delivery OTP (Resent)',
+                            body: `Resent: Your RENAX delivery OTP for ${createdOrderId} is ${deliveryOtp}.`,
+                            payload: { tracking_id: createdOrderId, otp: deliveryOtp, role: 'recipient' },
+                            ...(customerId ? { customer_id: customerId } : {}),
+                          } : null,
+                        ].filter(Boolean);
+                        const { error } = await supabase
+                          .from('notification_delivery_queue')
+                          .insert(rows);
+                        if (!error) {
+                          setResendSuccess(true);
+                          setQueueInsertFailed(false);
+                        }
+                      } finally {
+                        setResendingOtp(false);
+                      }
+                    }}
+                  >
+                    {resendingOtp
+                      ? <ActivityIndicator color="#004d3d" size="small" />
+                      : <Text style={styles.resendOtpBtnText}>Resend OTP via SMS</Text>
+                    }
+                  </Pressable>
+
+                </View>
+              ) : null}
 
               <Pressable style={[styles.receiptConfirmBtn, { width: '100%', marginBottom: 10 }]} onPress={downloadPDF}>
                 <Download color="#ccfd3a" size={18} style={{ marginRight: 8 }} />
                 <Text style={styles.receiptConfirmText}>DOWNLOAD PDF RECEIPT</Text>
               </Pressable>
               <Pressable style={[styles.receiptCancelBtn, { width: '100%' }]} onPress={() => {
+                setQueueInsertFailed(false);
+                setResendSuccess(false);
+                setCopiedOtp(null);
                 setShowReceiptModal(false);
                 setCreatedOrderId('');
+                setPickupOtp('');
+                setDeliveryOtp('');
                 setSearchingRiders(false);
                 setNoRidersFound(false);
+                setPendingLocalMatch(null);
+                
+                // Clear form state
+                setSenderName('');
+                setSenderPhone('');
+                setPickupData(null);
+                setPickupLandmark('');
+                setShowPickupLandmark(false);
+                setRecipientName('');
+                setRecipientPhone('');
+                setDeliveryData(null);
+                setDeliveryLandmark('');
+                setWeight('');
+                setDims('');
+                setCategory('');
+                setServiceSelected('Standard Van');
+                setPayMethod('');
+                setPackageDescription('');
+                setActualDistance(null);
               }}>
-                <Text style={styles.receiptCancelText}>Close</Text>
+                <Text style={styles.receiptCancelText}>Done / Create Another</Text>
               </Pressable>
-            </View>
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -836,9 +1337,15 @@ const styles = StyleSheet.create({
   priceValue: { fontFamily: 'PlusJakartaSans_7', fontSize: 28, color: '#004d3d' },
   recalcBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#ccfd3a', paddingHorizontal: 20, paddingVertical: 14, borderRadius: 10 },
   recalcText: { fontFamily: 'Outfit_7', fontSize: 13, color: '#002B22' },
+  matchingBanner: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#FFF7ED', borderWidth: 1, borderColor: '#FDBA74', borderRadius: 12, paddingVertical: 14, paddingHorizontal: 16, marginBottom: 16 },
+  matchingBannerTitle: { fontFamily: 'Outfit_7', fontSize: 14, color: '#9A3412' },
+  matchingBannerSub: { marginTop: 2, fontFamily: 'Outfit_4', fontSize: 12, color: '#7C2D12' },
   ctaRow: { flexDirection: 'row', gap: 16, alignItems: 'center' },
   createBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: '#004d3d', borderRadius: 12, paddingVertical: 18 },
   createBtnText: { fontFamily: 'Outfit_7', fontSize: 15, color: '#ccfd3a', letterSpacing: 0.5 },
+  retryBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#F0FDF4', borderWidth: 1, borderColor: '#86EFAC', borderRadius: 12, paddingVertical: 14, paddingHorizontal: 18 },
+  retryBtnText: { fontFamily: 'Outfit_7', fontSize: 14, color: '#004d3d', letterSpacing: 0.4 },
+  retryHint: { marginTop: 8, textAlign: 'center', fontFamily: 'Outfit_4', fontSize: 12, color: '#4B5563' },
   cancelBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 20, paddingVertical: 18, borderRadius: 12, borderWidth: 1, borderColor: '#ddd' },
   cancelBtnText: { fontFamily: 'Outfit_6', fontSize: 14, color: '#666' },
   // Modal
@@ -860,10 +1367,27 @@ const styles = StyleSheet.create({
   receiptRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12, alignItems: 'flex-start' },
   receiptLabel: { fontFamily: 'Outfit_4', fontSize: 13, color: '#666', flex: 1 },
   receiptValue: { fontFamily: 'Outfit_6', fontSize: 14, color: '#222', flex: 2, textAlign: 'right' },
+  qrGrid: { flexDirection: 'row', gap: 12, flexWrap: 'wrap', marginTop: 14, marginBottom: 8 },
   receiptDivider: { height: 1, backgroundColor: '#eee', marginVertical: 12 },
   receiptActions: { flexDirection: 'row', gap: 12, marginTop: 24 },
   receiptCancelBtn: { flex: 1, paddingVertical: 16, borderRadius: 12, borderWidth: 1, borderColor: '#ddd', alignItems: 'center' },
   receiptCancelText: { fontFamily: 'Outfit_6', fontSize: 14, color: '#666' },
   receiptConfirmBtn: { flex: 1, paddingVertical: 16, borderRadius: 12, backgroundColor: '#004d3d', alignItems: 'center', flexDirection: 'row', justifyContent: 'center' },
   receiptConfirmText: { fontFamily: 'Outfit_7', fontSize: 14, color: '#ccfd3a' },
+  // OTP Actions
+  otpActionBlock: { backgroundColor: '#f8fafc', borderRadius: 12, borderWidth: 1, borderColor: '#e2e8f0', padding: 14, marginBottom: 10 },
+  otpLabelRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  otpLabel: { fontFamily: 'Outfit_6', fontSize: 11, color: '#94a3b8', letterSpacing: 1.5, textTransform: 'uppercase' },
+  otpCode: { fontFamily: 'PlusJakartaSans_7', fontSize: 22, color: '#004d3d', letterSpacing: 4 },
+  otpActionRow: { flexDirection: 'row', gap: 10 },
+  otpActionBtn: { flex: 1, paddingVertical: 10, borderRadius: 8, backgroundColor: '#004d3d', alignItems: 'center' },
+  otpActionBtnText: { fontFamily: 'Outfit_7', fontSize: 13, color: '#ccfd3a' },
+  otpShareBtn: { backgroundColor: '#ccfd3a' },
+  resendOtpBtn: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8, paddingVertical: 12, borderRadius: 10, borderWidth: 1.5, borderColor: '#004d3d', marginTop: 6 },
+  resendOtpBtnText: { fontFamily: 'Outfit_7', fontSize: 13, color: '#004d3d' },
+  queueFailBanner: { backgroundColor: '#FFF7ED', borderRadius: 10, borderWidth: 1, borderColor: '#FED7AA', padding: 14, marginBottom: 12 },
+  queueFailTitle: { fontFamily: 'Outfit_7', fontSize: 13, color: '#92400E', marginBottom: 4 },
+  queueFailSub: { fontFamily: 'Outfit_4', fontSize: 12, color: '#78350F', lineHeight: 18 },
+  resendSuccessBanner: { backgroundColor: '#f0fdf4', borderRadius: 10, borderWidth: 1, borderColor: '#bbf7d0', padding: 12, marginBottom: 10, alignItems: 'center' },
+  resendSuccessText: { fontFamily: 'Outfit_7', fontSize: 13, color: '#047857' },
 });
