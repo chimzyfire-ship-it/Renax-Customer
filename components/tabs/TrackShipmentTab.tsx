@@ -12,7 +12,7 @@ import {
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { supabase } from '../../supabase';
 import TrackingMap from '../maps/TrackingMap';
-import { shipmentStatusFromStage, stageColor, stageLabel, stageProgress, stageProofLabel } from '../../utils/routingService';
+import { shipmentStatusLabel, stageColor, stageLabel, stageProgress, stageProofLabel } from '../../utils/routingService';
 import { getTrustBand, TRUST_BAND_LABELS, TRUST_BAND_COLORS, ARRIVED_AT_DISPLAY_MODEL } from '../../utils/stageRules';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -244,7 +244,7 @@ export default function TrackShipmentTab({ initialTrackingId = '', autoTrackSign
   // ─── Derived values ───────────────────────────────────────────────────────
   const currentStage = shipmentData?.dispatch_stage || 'pending_routing';
   const currentRoutingMode = shipmentData?.routing_mode || 'last_mile_local';
-  const displayStatus = shipmentData ? shipmentStatusFromStage(currentStage, currentRoutingMode) : 'Pending Routing';
+  const displayStatus = shipmentData ? shipmentStatusLabel(currentStage, currentRoutingMode) : 'Pending Routing';
   const statusColor = shipmentData ? stageColor(currentStage) : '#F59E0B';
   const progress = shipmentData ? stageProgress(currentStage, currentRoutingMode) : 0;
   const hasCoords   = shipmentData?.pickup_lat && shipmentData?.delivery_lat;

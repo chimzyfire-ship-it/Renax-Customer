@@ -173,7 +173,7 @@ async function cancelUnassignedLocalShipment(shipmentId: string) {
   const { error } = await supabase
     .from('shipments')
     .update({
-      status: 'Cancelled',
+      status: 'cancelled',
       dispatch_stage: 'cancelled',
       updated_at: new Date().toISOString(),
     })
@@ -307,7 +307,7 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
     await supabase
       .from('shipments')
       .update({
-        status: 'Pending',
+        status: 'pending',
         dispatch_stage: 'awaiting_rider_acceptance',
         updated_at: new Date().toISOString(),
       })
@@ -479,7 +479,7 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
           payment_method:    payMethod,
           estimated_price:   estimatedPrice,
           shipment_type:     shipmentType,
-          status:            'Pending',
+          status:            'pending',
           pickup_otp:        pickupVerificationCode,
           delivery_otp:      deliveryVerificationCode,
           routing_mode:      routing.routing_mode,

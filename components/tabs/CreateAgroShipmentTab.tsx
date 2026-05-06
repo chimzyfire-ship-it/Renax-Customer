@@ -102,7 +102,7 @@ export default function CreateAgroShipmentTab({ customerId }: { customerId?: str
         pickup_address: pickupData.address, pickup_lat: pickupData.lat, pickup_lon: pickupData.lon,
         recipient_name: recipientName, recipient_phone: recipientPhone,
         delivery_address: deliveryData.address, delivery_lat: deliveryData.lat, delivery_lon: deliveryData.lon,
-        status: 'Pending', routing_mode: finalRouting.routing_mode, dispatch_stage: finalRouting.dispatch_stage,
+        status: 'pending', routing_mode: finalRouting.routing_mode, dispatch_stage: finalRouting.dispatch_stage,
         pickup_otp: pickupVerificationCode, delivery_otp: deliveryVerificationCode,
         pickup_state: finalRouting.pickup_state, delivery_state: finalRouting.delivery_state,
         source_terminal_id: finalRouting.source_terminal_id, destination_terminal_id: finalRouting.destination_terminal_id,

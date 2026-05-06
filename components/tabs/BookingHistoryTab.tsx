@@ -18,7 +18,7 @@ import {
   ShipmentEventRecord,
   ShipmentRecord,
 } from '../../utils/customerData';
-import { shipmentStatusFromStage, stageLabel } from '../../utils/routingService';
+import { shipmentStatusLabel, stageLabel } from '../../utils/routingService';
 
 const STATUS_STYLE: Record<string, { bg: string; text: string }> = {
   Delivered: { bg: '#004d3d', text: '#ccfd3a' },
@@ -284,7 +284,7 @@ export default function BookingHistoryTab({ customerId, onTrackShipment }: Booki
               {isMobile ? (
                 <View style={styles.mobileList}>
                   {filteredBookings.slice(0, 50).map((booking, index) => {
-                    const derivedStatus = shipmentStatusFromStage(booking.dispatch_stage || 'pending_routing', booking.routing_mode || 'last_mile_local');
+                    const derivedStatus = shipmentStatusLabel(booking.dispatch_stage || 'pending_routing', booking.routing_mode || 'last_mile_local');
                     const statusKey = booking.status || derivedStatus;
                     const statusStyle = STATUS_STYLE[statusKey] ?? STATUS_STYLE.Pending;
 
@@ -344,7 +344,7 @@ export default function BookingHistoryTab({ customerId, onTrackShipment }: Booki
                   </View>
 
                   {filteredBookings.slice(0, 50).map((booking, index) => {
-                    const derivedStatus = shipmentStatusFromStage(booking.dispatch_stage || 'pending_routing', booking.routing_mode || 'last_mile_local');
+                    const derivedStatus = shipmentStatusLabel(booking.dispatch_stage || 'pending_routing', booking.routing_mode || 'last_mile_local');
                     const statusKey = booking.status || derivedStatus;
                     const statusStyle = STATUS_STYLE[statusKey] ?? STATUS_STYLE.Pending;
 
@@ -413,7 +413,7 @@ export default function BookingHistoryTab({ customerId, onTrackShipment }: Booki
                   <View style={[styles.detailsItem, isMobile && styles.detailsItemMobile]}>
                     <Text style={styles.detailsLabel}>Status</Text>
                     <Text style={styles.detailsValue}>
-                      {shipmentStatusFromStage(selectedBooking?.dispatch_stage || 'pending_routing', selectedBooking?.routing_mode || 'last_mile_local')}
+                      {shipmentStatusLabel(selectedBooking?.dispatch_stage || 'pending_routing', selectedBooking?.routing_mode || 'last_mile_local')}
                     </Text>
                   </View>
                   <View style={[styles.detailsItem, isMobile && styles.detailsItemMobile]}>
