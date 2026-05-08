@@ -1,5 +1,6 @@
 {
   "name": "renax-customer",
+  "description": "Customer app for RENAX logistics with shipment booking, live tracking, wallet payments, agro transport, notifications, and support flows.",
   "main": "expo-router/entry",
   "version": "1.0.0",
   "scripts": {
