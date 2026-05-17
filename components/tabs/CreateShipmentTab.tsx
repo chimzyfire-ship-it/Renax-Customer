@@ -26,11 +26,12 @@ const NIGERIAN_STATES = [
   'Taraba','Yobe','Zamfara',
 ];
 
-const detectShipmentType = (pickup: string, delivery: string): 'intra_state' | 'inter_state' => {
+const detectShipmentType = (pickup: string, delivery: string): 'intra_state' | 'inter_state' | 'unknown' => {
   const getState = (addr: string) => NIGERIAN_STATES.find(s => addr.toLowerCase().includes(s.toLowerCase())) || '';
   const ps = getState(pickup);
   const ds = getState(delivery);
-  return ps && ds && ps === ds ? 'intra_state' : 'inter_state';
+  if (!ps || !ds) return 'unknown';
+  return ps === ds ? 'intra_state' : 'inter_state';
 };
 
 const STEPS = ['Sender', 'Recipient', 'Package & Service'];
@@ -68,7 +69,7 @@ const RELAY_PICKUP_OPTIONS = [
   },
 ] as const;
 
-const assignmentCopy = (shipmentType: 'intra_state' | 'inter_state', relayStrategy: 'customer_dropoff' | 'renax_pickup') => {
+const assignmentCopy = (shipmentType: 'intra_state' | 'inter_state' | 'unknown', relayStrategy: 'customer_dropoff' | 'renax_pickup') => {
   if (shipmentType === 'inter_state' && relayStrategy === 'renax_pickup') {
     return {
       searchingTitle: 'Searching RENAX first-mile pickup vehicles...',
@@ -294,6 +295,7 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
 
   // Modals & Submit State
   const [showReceiptModal, setShowReceiptModal] = useState(false);
+  const [showRelayPlanModal, setShowRelayPlanModal] = useState(false);
   const [createdOrderId, setCreatedOrderId] = useState('');
   const [pickupOtp, setPickupOtp] = useState('');
   const [deliveryOtp, setDeliveryOtp] = useState('');
@@ -319,6 +321,7 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
   // Pickers visibility
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
   const [showPaymentPicker, setShowPaymentPicker]   = useState(false);
+  const [lastPromptedInterstateKey, setLastPromptedInterstateKey] = useState('');
 
   // Submit state
   const [loading, setLoading] = useState(false);
@@ -390,6 +393,9 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
   );
   const isInterStateShipment = shipmentType === 'inter_state';
   const assignmentUiCopy = assignmentCopy(shipmentType, relayFirstMileStrategy);
+  const interstateRouteKey = isInterStateShipment && pickupData?.address && deliveryData?.address
+    ? `${pickupData.address}__${deliveryData.address}`
+    : '';
 
   let currentStep = 0;
   if (isStep1Complete) currentStep = 1;
@@ -409,6 +415,18 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
     };
     fetchDistance();
   }, [pickupData, deliveryData]);
+
+  React.useEffect(() => {
+    if (isInterStateShipment && interstateRouteKey && interstateRouteKey !== lastPromptedInterstateKey) {
+      setShowRelayPlanModal(true);
+      setLastPromptedInterstateKey(interstateRouteKey);
+      return;
+    }
+
+    if (!isInterStateShipment) {
+      setShowRelayPlanModal(false);
+    }
+  }, [interstateRouteKey, isInterStateShipment, lastPromptedInterstateKey]);
 
   const estimatedPrice = React.useMemo(() => {
     let price = PRICING_FACTORS.baseFare + PRICING_FACTORS.fuelSurcharge;
@@ -803,6 +821,49 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
         onSelect={setPayMethod}
         onClose={() => setShowPaymentPicker(false)}
       />
+      <Modal visible={showRelayPlanModal} transparent animationType="fade" onRequestClose={() => setShowRelayPlanModal(false)}>
+        <Pressable style={styles.relayPlanOverlay} onPress={() => setShowRelayPlanModal(false)}>
+          <Pressable style={styles.relayPlanModal} onPress={() => {}}>
+            <View style={styles.relayPlanHeader}>
+              <Text style={styles.relayPlanEyebrow}>RENAX Terminal Routing</Text>
+              <Text style={styles.relayPlanHeading}>This shipment is inter-state</Text>
+              <Text style={styles.relayPlanBody}>
+                RENAX can either receive it at the source terminal or send a pickup vehicle to move it there first. Choose the option that works best for this shipment.
+              </Text>
+            </View>
+            <View style={styles.relayPlanGrid}>
+              {RELAY_PICKUP_OPTIONS.map((option) => {
+                const active = relayFirstMileStrategy === option.id;
+                return (
+                  <Pressable
+                    key={option.id}
+                    style={[styles.relayPlanCard, active && styles.relayPlanCardActive]}
+                    onPress={() => setRelayFirstMileStrategy(option.id)}
+                  >
+                    <View style={[styles.relayPlanCheck, active && styles.relayPlanCheckActive]}>
+                      {active ? <Check color="#002B22" size={14} /> : null}
+                    </View>
+                    <Text style={[styles.relayPlanCardTitle, active && styles.relayPlanCardTitleActive]}>
+                      {option.title}
+                    </Text>
+                    <Text style={styles.relayPlanCardBody}>{option.body}</Text>
+                    {option.id === 'renax_pickup' ? (
+                      <Text style={styles.relayPlanChargeNote}>
+                        Note: RENAX pickup to terminal can add a small first-mile pickup charge based on distance and vehicle type.
+                      </Text>
+                    ) : null}
+                  </Pressable>
+                );
+              })}
+            </View>
+            <View style={styles.relayPlanActions}>
+              <Pressable style={styles.relayPlanDismissBtn} onPress={() => setShowRelayPlanModal(false)}>
+                <Text style={styles.relayPlanDismissText}>Continue</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       {/* Page header */}
       <Text style={styles.pageTitle}>Create New Shipment</Text>
@@ -811,14 +872,6 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
         {renderStepIndicator()}
       </View>
       <Text style={styles.orderType}>Create New Shipment (Single Order)</Text>
-      {isInterStateShipment ? (
-        <View style={styles.flowHintBanner}>
-          <Text style={styles.flowHintTitle}>Inter-state shipment detected</Text>
-          <Text style={styles.flowHintBody}>
-            RENAX will route this shipment through source and destination terminals. You can either drop it off at the source terminal or request a RENAX pickup vehicle to collect it first.
-          </Text>
-        </View>
-      ) : null}
 
       {/* ── Sender & Recipient ── */}
       <View style={[styles.formGrid, isMobile && { flexDirection: 'column' }]}>
@@ -969,34 +1022,6 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
               onPress={() => setShowPaymentPicker(true)}
             />
           </View>
-          {isInterStateShipment ? (
-            <View style={styles.interStatePlanWrap}>
-              <Text style={styles.interStatePlanTitle}>Inter-state terminal plan</Text>
-              <Text style={styles.interStatePlanSub}>
-                This shipment will move through RENAX terminals. Choose how it should get to the source terminal.
-              </Text>
-              <View style={styles.interStatePlanGrid}>
-                {RELAY_PICKUP_OPTIONS.map((option) => {
-                  const active = relayFirstMileStrategy === option.id;
-                  return (
-                    <Pressable
-                      key={option.id}
-                      style={[styles.interStatePlanCard, active && styles.interStatePlanCardActive]}
-                      onPress={() => setRelayFirstMileStrategy(option.id)}
-                    >
-                      <View style={[styles.interStatePlanCheck, active && styles.interStatePlanCheckActive]}>
-                        {active ? <Check color="#002B22" size={14} /> : null}
-                      </View>
-                      <Text style={[styles.interStatePlanCardTitle, active && styles.interStatePlanCardTitleActive]}>
-                        {option.title}
-                      </Text>
-                      <Text style={styles.interStatePlanCardBody}>{option.body}</Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            </View>
-          ) : null}
         </View>
       </View>
 
@@ -1402,9 +1427,6 @@ const styles = StyleSheet.create({
   stepLabel: { fontFamily: 'Outfit_4', fontSize: 12, color: '#999' },
   stepLabelActive: { fontFamily: 'Outfit_7', color: '#004d3d' },
   orderType: { fontFamily: 'PlusJakartaSans_7', fontSize: 20, color: '#222', marginBottom: 20 },
-  flowHintBanner: { marginBottom: 18, padding: 16, borderRadius: 14, backgroundColor: '#EFF6FF', borderWidth: 1, borderColor: '#BFDBFE' },
-  flowHintTitle: { fontFamily: 'Outfit_7', fontSize: 14, color: '#1D4ED8', marginBottom: 4 },
-  flowHintBody: { fontFamily: 'Outfit_4', fontSize: 13, lineHeight: 20, color: '#1E3A8A' },
   formGrid: { flexDirection: 'row', gap: 20, marginBottom: 20 },
   formCard: { flex: 1, backgroundColor: '#fff', borderRadius: 16, padding: 24, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8 },
   sectionTitle: { fontFamily: 'PlusJakartaSans_7', fontSize: 16, color: '#111', marginBottom: 16 },
@@ -1431,17 +1453,6 @@ const styles = StyleSheet.create({
   serviceLabel: { fontFamily: 'Outfit_7', fontSize: 13, color: '#333', textAlign: 'center' },
   serviceSub: { fontFamily: 'Outfit_4', fontSize: 11, color: '#999', textAlign: 'center' },
   pmRow: { gap: 8 },
-  interStatePlanWrap: { marginTop: 18, padding: 16, borderRadius: 14, backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0' },
-  interStatePlanTitle: { fontFamily: 'PlusJakartaSans_7', fontSize: 15, color: '#0F172A', marginBottom: 4 },
-  interStatePlanSub: { fontFamily: 'Outfit_4', fontSize: 13, color: '#475569', lineHeight: 20, marginBottom: 12 },
-  interStatePlanGrid: { gap: 10 },
-  interStatePlanCard: { borderRadius: 12, borderWidth: 1, borderColor: '#CBD5E1', backgroundColor: '#FFFFFF', padding: 14, paddingLeft: 46, position: 'relative' },
-  interStatePlanCardActive: { borderColor: '#004d3d', backgroundColor: '#F0FDF4' },
-  interStatePlanCheck: { position: 'absolute', top: 14, left: 14, width: 20, height: 20, borderRadius: 10, borderWidth: 1.5, borderColor: '#94A3B8', backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
-  interStatePlanCheckActive: { backgroundColor: '#ccfd3a', borderColor: '#ccfd3a' },
-  interStatePlanCardTitle: { fontFamily: 'Outfit_7', fontSize: 13, color: '#0F172A', marginBottom: 4 },
-  interStatePlanCardTitleActive: { color: '#004d3d' },
-  interStatePlanCardBody: { fontFamily: 'Outfit_4', fontSize: 12, color: '#475569', lineHeight: 18 },
   summaryBar: { backgroundColor: '#fff', borderRadius: 16, padding: 24, flexDirection: 'row', alignItems: 'center', gap: 20, flexWrap: 'wrap', marginBottom: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8 },
   summaryTitle: { fontFamily: 'PlusJakartaSans_7', fontSize: 16, color: '#111', marginBottom: 6 },
   summaryLine: { fontFamily: 'Outfit_4', fontSize: 13, color: '#555' },
@@ -1469,6 +1480,24 @@ const styles = StyleSheet.create({
   modalOption: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
   modalOptionText: { fontFamily: 'Outfit_4', fontSize: 15, color: '#333' },
   modalOptionActive: { fontFamily: 'Outfit_7', color: '#004d3d' },
+  relayPlanOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+  relayPlanModal: { width: '100%', maxWidth: 560, backgroundColor: '#fff', borderRadius: 22, padding: 24, shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.12, shadowRadius: 24 },
+  relayPlanHeader: { marginBottom: 16 },
+  relayPlanEyebrow: { fontFamily: 'Outfit_7', fontSize: 11, letterSpacing: 1.2, color: '#1D4ED8', marginBottom: 6 },
+  relayPlanHeading: { fontFamily: 'PlusJakartaSans_7', fontSize: 24, color: '#0F172A', marginBottom: 8 },
+  relayPlanBody: { fontFamily: 'Outfit_4', fontSize: 14, lineHeight: 22, color: '#475569' },
+  relayPlanGrid: { gap: 12 },
+  relayPlanCard: { borderRadius: 16, borderWidth: 1, borderColor: '#CBD5E1', backgroundColor: '#FFFFFF', padding: 16, paddingLeft: 52, position: 'relative' },
+  relayPlanCardActive: { borderColor: '#004d3d', backgroundColor: '#F0FDF4' },
+  relayPlanCheck: { position: 'absolute', top: 18, left: 18, width: 22, height: 22, borderRadius: 11, borderWidth: 1.5, borderColor: '#94A3B8', backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
+  relayPlanCheckActive: { backgroundColor: '#ccfd3a', borderColor: '#ccfd3a' },
+  relayPlanCardTitle: { fontFamily: 'Outfit_7', fontSize: 15, color: '#0F172A', marginBottom: 6 },
+  relayPlanCardTitleActive: { color: '#004d3d' },
+  relayPlanCardBody: { fontFamily: 'Outfit_4', fontSize: 13, color: '#475569', lineHeight: 20 },
+  relayPlanChargeNote: { marginTop: 10, fontFamily: 'Outfit_6', fontSize: 12, color: '#B45309', lineHeight: 18 },
+  relayPlanActions: { marginTop: 18 },
+  relayPlanDismissBtn: { backgroundColor: '#004d3d', borderRadius: 14, paddingVertical: 15, alignItems: 'center' },
+  relayPlanDismissText: { fontFamily: 'Outfit_7', fontSize: 14, color: '#ccfd3a', letterSpacing: 0.3 },
   // Form Cards
   formCardComplete: { borderColor: '#10B981', borderWidth: 1 },
   // Receipt Modal
