@@ -26,11 +26,12 @@ const NIGERIAN_STATES = [
   'Taraba','Yobe','Zamfara',
 ];
 
-const detectShipmentType = (pickup: string, delivery: string): 'intra_state' | 'inter_state' => {
+const detectShipmentType = (pickup: string, delivery: string): 'intra_state' | 'inter_state' | 'unknown' => {
   const getState = (addr: string) => NIGERIAN_STATES.find(s => addr.toLowerCase().includes(s.toLowerCase())) || '';
   const ps = getState(pickup);
   const ds = getState(delivery);
-  return ps && ds && ps === ds ? 'intra_state' : 'inter_state';
+  if (!ps || !ds) return 'unknown';
+  return ps === ds ? 'intra_state' : 'inter_state';
 };
 
 const STEPS = ['Sender', 'Recipient', 'Package & Service'];
@@ -68,7 +69,7 @@ const RELAY_PICKUP_OPTIONS = [
   },
 ] as const;
 
-const assignmentCopy = (shipmentType: 'intra_state' | 'inter_state', relayStrategy: 'customer_dropoff' | 'renax_pickup') => {
+const assignmentCopy = (shipmentType: 'intra_state' | 'inter_state' | 'unknown', relayStrategy: 'customer_dropoff' | 'renax_pickup') => {
   if (shipmentType === 'inter_state' && relayStrategy === 'renax_pickup') {
     return {
       searchingTitle: 'Searching RENAX first-mile pickup vehicles...',
