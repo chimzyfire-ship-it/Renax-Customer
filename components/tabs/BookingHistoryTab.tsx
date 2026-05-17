@@ -430,6 +430,16 @@ export default function BookingHistoryTab({ customerId, onTrackShipment }: Booki
                           : 'Local Delivery'}
                     </Text>
                   </View>
+                  {selectedBooking?.routing_mode === 'relay_terminal' ? (
+                    <View style={[styles.detailsItem, isMobile && styles.detailsItemMobile]}>
+                      <Text style={styles.detailsLabel}>Source Terminal Entry</Text>
+                      <Text style={styles.detailsValue}>
+                        {selectedBooking?.relay_first_mile_strategy === 'renax_pickup'
+                          ? 'RENAX Pickup To Terminal'
+                          : 'Customer Drop-Off At Terminal'}
+                      </Text>
+                    </View>
+                  ) : null}
                   <View style={[styles.detailsItem, isMobile && styles.detailsItemMobile]}>
                     <Text style={styles.detailsLabel}>Pickup</Text>
                     <Text style={styles.detailsValue}>{selectedBooking?.pickup_address || 'N/A'}</Text>

@@ -55,6 +55,41 @@ const PAYMENT_METHODS = [
   'Pay on Delivery',
 ];
 
+const RELAY_PICKUP_OPTIONS = [
+  {
+    id: 'customer_dropoff',
+    title: 'I will drop this off at a RENAX terminal',
+    body: 'Best for scheduled inter-state shipments. Terminal staff receives it directly and moves it into the relay queue.',
+  },
+  {
+    id: 'renax_pickup',
+    title: 'RENAX should pick this up for terminal processing',
+    body: 'RENAX sends a first-mile pickup vehicle to collect it and take it to the source terminal before linehaul.',
+  },
+] as const;
+
+const assignmentCopy = (shipmentType: 'intra_state' | 'inter_state', relayStrategy: 'customer_dropoff' | 'renax_pickup') => {
+  if (shipmentType === 'inter_state' && relayStrategy === 'renax_pickup') {
+    return {
+      searchingTitle: 'Searching RENAX first-mile pickup vehicles...',
+      searchingSub: 'Waiting for the closest available RENAX pickup vehicle to accept and move this parcel to the source terminal.',
+      retryLabel: 'REFRESH PICKUP SEARCH',
+      retryHint: 'We now wait up to 90 seconds for a RENAX pickup vehicle to accept before closing this terminal-pickup request.',
+      createCta: 'MATCHING PICKUP VEHICLE...',
+      noMatchError: 'No RENAX pickup vehicle accepted this inter-state terminal pickup request yet. This request was closed and removed from rider screens until you refresh it.',
+    };
+  }
+
+  return {
+    searchingTitle: 'Searching live riders across Lagos state...',
+    searchingSub: 'Waiting for the closest available rider to accept.',
+    retryLabel: 'REFRESH LIVE RIDER SEARCH',
+    retryHint: 'We now wait up to 90 seconds for a rider to accept before failing this same-city request.',
+    createCta: 'MATCHING LIVE RIDER...',
+    noMatchError: 'No rider accepted this intra-state shipment yet. This request was closed and removed from rider screens until you refresh it.',
+  };
+};
+
 const PRICING_FACTORS = {
   baseFare: 1500,
   perKg: 200,
@@ -255,6 +290,7 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
   const [serviceSelected, setServiceSelected] = useState('Standard Van');
   const [payMethod, setPayMethod]       = useState('');
   const [packageDescription, setPackageDescription] = useState('');
+  const [relayFirstMileStrategy, setRelayFirstMileStrategy] = useState<'customer_dropoff' | 'renax_pickup'>('customer_dropoff');
 
   // Modals & Submit State
   const [showReceiptModal, setShowReceiptModal] = useState(false);
@@ -348,6 +384,12 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
   const isStep1Complete = !!(senderName && senderPhone && pickupData);
   const isStep2Complete = !!(recipientName && recipientPhone && deliveryData && deliveryLandmark);
   const isStep3Complete = !!(weight && category && serviceSelected && payMethod && packageDescription);
+  const shipmentType = detectShipmentType(
+    pickupData?.address || '',
+    deliveryData?.address || ''
+  );
+  const isInterStateShipment = shipmentType === 'inter_state';
+  const assignmentUiCopy = assignmentCopy(shipmentType, relayFirstMileStrategy);
 
   let currentStep = 0;
   if (isStep1Complete) currentStep = 1;
@@ -430,27 +472,24 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
 
       const routing = await resolveRouting(
         pickupData?.address || '',
-        deliveryData?.address || ''
+        deliveryData?.address || '',
+        {
+          relayFirstMileStrategy,
+        }
       );
 
-      const isSameStateLocalShipment =
-        routing.routing_mode === 'last_mile_local' &&
-        routing.pickup_state.trim().toLowerCase() === routing.delivery_state.trim().toLowerCase();
+      const requiresImmediateAssignment = routing.dispatch_stage === 'awaiting_rider_acceptance';
 
-      if (isSameStateLocalShipment) {
+      if (requiresImmediateAssignment) {
         setSearchingRiders(true);
         setNoRidersFound(false);
       } else {
+        setSearchingRiders(false);
         setNoRidersFound(false);
       }
 
       // Generate Order ID
       const generatedId = `RNX-${Math.floor(100000 + Math.random() * 900000)}`;
-      const shipmentType = detectShipmentType(
-        pickupData?.address || '',
-        deliveryData?.address || ''
-      );
-      
       const pickupVerificationCode = generateVerificationCode();
       const deliveryVerificationCode = generateVerificationCode();
 
@@ -483,6 +522,7 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
           pickup_otp:        pickupVerificationCode,
           delivery_otp:      deliveryVerificationCode,
           routing_mode:      routing.routing_mode,
+          relay_first_mile_strategy: routing.routing_mode === 'relay_terminal' ? relayFirstMileStrategy : null,
           dispatch_stage:    routing.dispatch_stage,
           pickup_state:      routing.pickup_state,
           pickup_city:       routing.pickup_city,
@@ -556,8 +596,9 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
         }
       }
 
-      // Intra-state local shipments remain provisional until a rider actually accepts.
-      if (isSameStateLocalShipment && createdShipment?.id) {
+      // Shipments that begin at awaiting_rider_acceptance remain provisional until
+      // a rider or RENAX first-mile pickup vehicle actually accepts.
+      if (requiresImmediateAssignment && createdShipment?.id) {
         setPendingLocalMatch({
           shipmentId: createdShipment.id,
           trackingId: createdShipment.tracking_id || generatedId,
@@ -577,7 +618,7 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
             setSearchingRiders(false);
           } else {
             setNoRidersFound(true);
-            setFormError('No rider accepted this intra-state shipment yet. This request was closed and removed from rider screens until you refresh it.');
+            setFormError(assignmentUiCopy.noMatchError);
             setLoading(false);
             return;
           }
@@ -770,6 +811,14 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
         {renderStepIndicator()}
       </View>
       <Text style={styles.orderType}>Create New Shipment (Single Order)</Text>
+      {isInterStateShipment ? (
+        <View style={styles.flowHintBanner}>
+          <Text style={styles.flowHintTitle}>Inter-state shipment detected</Text>
+          <Text style={styles.flowHintBody}>
+            RENAX will route this shipment through source and destination terminals. You can either drop it off at the source terminal or request a RENAX pickup vehicle to collect it first.
+          </Text>
+        </View>
+      ) : null}
 
       {/* ── Sender & Recipient ── */}
       <View style={[styles.formGrid, isMobile && { flexDirection: 'column' }]}>
@@ -920,6 +969,34 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
               onPress={() => setShowPaymentPicker(true)}
             />
           </View>
+          {isInterStateShipment ? (
+            <View style={styles.interStatePlanWrap}>
+              <Text style={styles.interStatePlanTitle}>Inter-state terminal plan</Text>
+              <Text style={styles.interStatePlanSub}>
+                This shipment will move through RENAX terminals. Choose how it should get to the source terminal.
+              </Text>
+              <View style={styles.interStatePlanGrid}>
+                {RELAY_PICKUP_OPTIONS.map((option) => {
+                  const active = relayFirstMileStrategy === option.id;
+                  return (
+                    <Pressable
+                      key={option.id}
+                      style={[styles.interStatePlanCard, active && styles.interStatePlanCardActive]}
+                      onPress={() => setRelayFirstMileStrategy(option.id)}
+                    >
+                      <View style={[styles.interStatePlanCheck, active && styles.interStatePlanCheckActive]}>
+                        {active ? <Check color="#002B22" size={14} /> : null}
+                      </View>
+                      <Text style={[styles.interStatePlanCardTitle, active && styles.interStatePlanCardTitleActive]}>
+                        {option.title}
+                      </Text>
+                      <Text style={styles.interStatePlanCardBody}>{option.body}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+          ) : null}
         </View>
       </View>
 
@@ -936,6 +1013,11 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
           <Text style={styles.summaryLine}>Service Level: {serviceSelected}</Text>
           {category ? <Text style={styles.summaryLine}>Category: {category}</Text> : null}
           {payMethod ? <Text style={styles.summaryLine}>Payment: {payMethod}</Text> : null}
+          {isInterStateShipment ? (
+            <Text style={styles.summaryLine}>
+              First Mile: {relayFirstMileStrategy === 'customer_dropoff' ? 'Customer Drop-Off To Terminal' : 'RENAX Pickup To Terminal'}
+            </Text>
+          ) : null}
         </View>
         <View style={styles.priceBox}>
           <Text style={styles.priceLabel}>Estimated Price:</Text>
@@ -963,8 +1045,10 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
         <View style={styles.matchingBanner}>
           <ActivityIndicator color="#B45309" size="small" />
           <View style={{ flex: 1 }}>
-            <Text style={styles.matchingBannerTitle}>Searching live riders across Lagos state...</Text>
-            <Text style={styles.matchingBannerSub}>Waiting for the closest available rider to accept. Time left: {Math.floor(matchCountdown / 60)}:{String(matchCountdown % 60).padStart(2, '0')}</Text>
+            <Text style={styles.matchingBannerTitle}>{assignmentUiCopy.searchingTitle}</Text>
+            <Text style={styles.matchingBannerSub}>
+              {assignmentUiCopy.searchingSub} Time left: {Math.floor(matchCountdown / 60)}:{String(matchCountdown % 60).padStart(2, '0')}
+            </Text>
           </View>
         </View>
       ) : null}
@@ -984,9 +1068,9 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
             disabled={searchingRiders}
           >
             <RotateCcw color="#004d3d" size={16} />
-            <Text style={styles.retryBtnText}>REFRESH LIVE RIDER SEARCH</Text>
+            <Text style={styles.retryBtnText}>{assignmentUiCopy.retryLabel}</Text>
           </Pressable>
-          <Text style={styles.retryHint}>We now wait up to 90 seconds for a rider to accept before failing this same-city request.</Text>
+          <Text style={styles.retryHint}>{assignmentUiCopy.retryHint}</Text>
         </View>
       ) : null}
       <View style={styles.ctaRow}>
@@ -1001,7 +1085,7 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
             <FileText color="#fff" size={18} />
           )}
           <Text style={styles.createBtnText}>
-            {loading ? (searchingRiders ? 'MATCHING LIVE RIDER...' : 'CREATING...') : 'CREATE SHIPMENT & GET ORDER ID'}
+            {loading ? (searchingRiders ? assignmentUiCopy.createCta : 'CREATING...') : 'CREATE SHIPMENT & GET ORDER ID'}
           </Text>
         </Pressable>
         <Pressable style={styles.cancelBtn}>
@@ -1024,7 +1108,7 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
                 <ChevronDown color="#004d3d" size={14} />
               </View>
 
-              <View style={{ backgroundColor: '#f0fdf4', padding: 12, borderRadius: 12, marginVertical: 12, borderWidth: 1, borderColor: '#bbf7d0', width: '100%', alignItems: 'center' }}>
+        <View style={{ backgroundColor: '#f0fdf4', padding: 12, borderRadius: 12, marginVertical: 12, borderWidth: 1, borderColor: '#bbf7d0', width: '100%', alignItems: 'center' }}>
                 <Text style={{ fontFamily: 'Outfit_6', color: '#047857', marginBottom: 2 }}>Tracking / Order ID</Text>
                 <Text style={{ fontFamily: 'PlusJakartaSans_7', fontSize: 22, color: '#004d3d', letterSpacing: 2 }}>{createdOrderId}</Text>
                 <View style={{ marginTop: 6, backgroundColor: detectShipmentType(pickupData?.address || '', deliveryData?.address || '') === 'intra_state' ? '#004d3d' : '#B45309', borderRadius: 6, paddingHorizontal: 10, paddingVertical: 3 }}>
@@ -1033,6 +1117,21 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
                   </Text>
                 </View>
               </View>
+
+              {detectShipmentType(pickupData?.address || '', deliveryData?.address || '') === 'inter_state' ? (
+                <View style={styles.receiptPlanBanner}>
+                  <Text style={styles.receiptPlanTitle}>
+                    {relayFirstMileStrategy === 'customer_dropoff'
+                      ? 'Customer Drop-Off To Source Terminal'
+                      : 'RENAX First-Mile Pickup Requested'}
+                  </Text>
+                  <Text style={styles.receiptPlanSub}>
+                    {relayFirstMileStrategy === 'customer_dropoff'
+                      ? 'This inter-state shipment will wait for source-terminal drop-off and then move into the relay hub workflow.'
+                      : 'This inter-state shipment will be offered only to the first-mile pickup queue so RENAX can collect it and move it into the source terminal workflow.'}
+                  </Text>
+                </View>
+              ) : null}
 
               {searchingRiders && (
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#fffbeb', padding: 12, borderRadius: 10, borderWidth: 1, borderColor: '#fde68a', width: '100%', marginBottom: 10 }}>
@@ -1303,6 +1402,9 @@ const styles = StyleSheet.create({
   stepLabel: { fontFamily: 'Outfit_4', fontSize: 12, color: '#999' },
   stepLabelActive: { fontFamily: 'Outfit_7', color: '#004d3d' },
   orderType: { fontFamily: 'PlusJakartaSans_7', fontSize: 20, color: '#222', marginBottom: 20 },
+  flowHintBanner: { marginBottom: 18, padding: 16, borderRadius: 14, backgroundColor: '#EFF6FF', borderWidth: 1, borderColor: '#BFDBFE' },
+  flowHintTitle: { fontFamily: 'Outfit_7', fontSize: 14, color: '#1D4ED8', marginBottom: 4 },
+  flowHintBody: { fontFamily: 'Outfit_4', fontSize: 13, lineHeight: 20, color: '#1E3A8A' },
   formGrid: { flexDirection: 'row', gap: 20, marginBottom: 20 },
   formCard: { flex: 1, backgroundColor: '#fff', borderRadius: 16, padding: 24, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8 },
   sectionTitle: { fontFamily: 'PlusJakartaSans_7', fontSize: 16, color: '#111', marginBottom: 16 },
@@ -1329,6 +1431,17 @@ const styles = StyleSheet.create({
   serviceLabel: { fontFamily: 'Outfit_7', fontSize: 13, color: '#333', textAlign: 'center' },
   serviceSub: { fontFamily: 'Outfit_4', fontSize: 11, color: '#999', textAlign: 'center' },
   pmRow: { gap: 8 },
+  interStatePlanWrap: { marginTop: 18, padding: 16, borderRadius: 14, backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0' },
+  interStatePlanTitle: { fontFamily: 'PlusJakartaSans_7', fontSize: 15, color: '#0F172A', marginBottom: 4 },
+  interStatePlanSub: { fontFamily: 'Outfit_4', fontSize: 13, color: '#475569', lineHeight: 20, marginBottom: 12 },
+  interStatePlanGrid: { gap: 10 },
+  interStatePlanCard: { borderRadius: 12, borderWidth: 1, borderColor: '#CBD5E1', backgroundColor: '#FFFFFF', padding: 14, paddingLeft: 46, position: 'relative' },
+  interStatePlanCardActive: { borderColor: '#004d3d', backgroundColor: '#F0FDF4' },
+  interStatePlanCheck: { position: 'absolute', top: 14, left: 14, width: 20, height: 20, borderRadius: 10, borderWidth: 1.5, borderColor: '#94A3B8', backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
+  interStatePlanCheckActive: { backgroundColor: '#ccfd3a', borderColor: '#ccfd3a' },
+  interStatePlanCardTitle: { fontFamily: 'Outfit_7', fontSize: 13, color: '#0F172A', marginBottom: 4 },
+  interStatePlanCardTitleActive: { color: '#004d3d' },
+  interStatePlanCardBody: { fontFamily: 'Outfit_4', fontSize: 12, color: '#475569', lineHeight: 18 },
   summaryBar: { backgroundColor: '#fff', borderRadius: 16, padding: 24, flexDirection: 'row', alignItems: 'center', gap: 20, flexWrap: 'wrap', marginBottom: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8 },
   summaryTitle: { fontFamily: 'PlusJakartaSans_7', fontSize: 16, color: '#111', marginBottom: 6 },
   summaryLine: { fontFamily: 'Outfit_4', fontSize: 13, color: '#555' },
@@ -1364,6 +1477,9 @@ const styles = StyleSheet.create({
   receiptTitle: { fontFamily: 'PlusJakartaSans_7', fontSize: 22, color: '#111', marginBottom: 4, textAlign: 'center' },
   receiptSub: { fontFamily: 'Outfit_4', fontSize: 14, color: '#666', textAlign: 'center', marginBottom: 20 },
   receiptBody: { maxHeight: 400 },
+  receiptPlanBanner: { width: '100%', backgroundColor: '#EFF6FF', borderRadius: 12, borderWidth: 1, borderColor: '#BFDBFE', padding: 14, marginBottom: 14 },
+  receiptPlanTitle: { fontFamily: 'Outfit_7', fontSize: 13, color: '#1D4ED8', marginBottom: 4 },
+  receiptPlanSub: { fontFamily: 'Outfit_4', fontSize: 12, color: '#1E3A8A', lineHeight: 18 },
   receiptRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12, alignItems: 'flex-start' },
   receiptLabel: { fontFamily: 'Outfit_4', fontSize: 13, color: '#666', flex: 1 },
   receiptValue: { fontFamily: 'Outfit_6', fontSize: 14, color: '#222', flex: 2, textAlign: 'right' },
