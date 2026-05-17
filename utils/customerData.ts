@@ -21,6 +21,7 @@ export type ShipmentRecord = {
   delivery_city?: string | null;
   source_terminal_id?: string | null;
   destination_terminal_id?: string | null;
+  relay_first_mile_strategy?: 'customer_dropoff' | 'renax_pickup' | null;
   estimated_price: number | null;
   payment_method?: string | null;
   service_level?: string | null;
@@ -639,7 +640,7 @@ export async function fetchDashboardMetrics(customerId: string): Promise<Dashboa
 
   const inTransitCount = bookings.filter((booking) => {
     const stage = booking.dispatch_stage ?? '';
-    return ['awaiting_rider_acceptance', 'awaiting_source_terminal', 'received_at_source_terminal', 'linehaul_in_transit', 'received_at_destination_terminal', 'awaiting_final_mile_rider', 'out_for_delivery'].includes(stage);
+    return ['awaiting_rider_acceptance', 'awaiting_source_terminal_dropoff', 'awaiting_source_terminal', 'received_at_source_terminal', 'linehaul_in_transit', 'received_at_destination_terminal', 'awaiting_final_mile_rider', 'out_for_delivery'].includes(stage);
   }).length;
   const pendingCount = bookings.filter((booking) => {
     const stage = booking.dispatch_stage ?? '';
