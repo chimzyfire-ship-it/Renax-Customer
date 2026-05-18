@@ -228,6 +228,21 @@ async function cancelUnassignedLocalShipment(shipmentId: string) {
   return { cancelled: true, accepted: false, data: null };
 }
 
+async function createManagedFirstMilePickupRequest(shipmentId: string) {
+  const { data, error } = await supabase.rpc('create_first_mile_pickup_request', {
+    p_payload: {
+      shipment_id: shipmentId,
+      priority: 'normal',
+    },
+  });
+
+  if (error) {
+    throw new Error(`First-mile pickup queue failed: ${error.message}`);
+  }
+
+  return data as string | null;
+}
+
 // ─── Reusable Modal Picker ─────────────────────────────────────────────────────
 interface PickerModalProps {
   visible: boolean;
@@ -496,7 +511,12 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
         }
       );
 
-      const requiresImmediateAssignment = routing.dispatch_stage === 'awaiting_rider_acceptance';
+      const isManagedFirstMilePickup =
+        routing.routing_mode === 'relay_terminal' &&
+        relayFirstMileStrategy === 'renax_pickup';
+      const requiresImmediateAssignment =
+        routing.routing_mode === 'last_mile_local' &&
+        routing.dispatch_stage === 'awaiting_rider_acceptance';
 
       if (requiresImmediateAssignment) {
         setSearchingRiders(true);
@@ -567,6 +587,18 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
           routing.reason
         );
 
+        if (isManagedFirstMilePickup) {
+          const pickupRequestId = await createManagedFirstMilePickupRequest(createdShipment.id);
+          await logShipmentEvent(
+            createdShipment.id,
+            routing.dispatch_stage,
+            'RENAX First-Mile Orchestration',
+            resolvedCustomerId,
+            'customer',
+            `First-mile pickup request ${pickupRequestId || 'created'} queued for ops assignment.`
+          );
+        }
+
         const notificationRows = [
           senderPhone && pickupVerificationCode
             ? {
@@ -614,8 +646,7 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
         }
       }
 
-      // Shipments that begin at awaiting_rider_acceptance remain provisional until
-      // a rider or RENAX first-mile pickup vehicle actually accepts.
+      // Same-state shipments remain provisional until a live rider accepts.
       if (requiresImmediateAssignment && createdShipment?.id) {
         setPendingLocalMatch({
           shipmentId: createdShipment.id,
