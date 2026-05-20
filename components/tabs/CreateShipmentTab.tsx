@@ -69,6 +69,19 @@ const RELAY_PICKUP_OPTIONS = [
   },
 ] as const;
 
+const RELAY_LAST_MILE_OPTIONS = [
+  {
+    id: 'recipient_pickup',
+    title: 'Recipient will collect from the RENAX destination terminal',
+    body: 'Best when the receiver can come to the hub. Ops will hold the parcel at the terminal until pickup is confirmed.',
+  },
+  {
+    id: 'renax_delivery',
+    title: 'RENAX should deliver from terminal to the recipient',
+    body: 'Best when the receiver wants door delivery after the parcel reaches the destination terminal.',
+  },
+] as const;
+
 const assignmentCopy = (shipmentType: 'intra_state' | 'inter_state' | 'unknown', relayStrategy: 'customer_dropoff' | 'renax_pickup') => {
   if (shipmentType === 'inter_state' && relayStrategy === 'renax_pickup') {
     return {
@@ -307,6 +320,7 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
   const [payMethod, setPayMethod]       = useState('');
   const [packageDescription, setPackageDescription] = useState('');
   const [relayFirstMileStrategy, setRelayFirstMileStrategy] = useState<'customer_dropoff' | 'renax_pickup'>('customer_dropoff');
+  const [relayLastMileStrategy, setRelayLastMileStrategy] = useState<'recipient_pickup' | 'renax_delivery'>('renax_delivery');
 
   // Modals & Submit State
   const [showReceiptModal, setShowReceiptModal] = useState(false);
@@ -508,6 +522,7 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
         deliveryData?.address || '',
         {
           relayFirstMileStrategy,
+          relayLastMileStrategy,
         }
       );
 
@@ -561,6 +576,7 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
           delivery_otp:      deliveryVerificationCode,
           routing_mode:      routing.routing_mode,
           relay_first_mile_strategy: routing.routing_mode === 'relay_terminal' ? relayFirstMileStrategy : null,
+          relay_last_mile_strategy: routing.routing_mode === 'relay_terminal' ? relayLastMileStrategy : null,
           dispatch_stage:    routing.dispatch_stage,
           pickup_state:      routing.pickup_state,
           pickup_city:       routing.pickup_city,
@@ -859,7 +875,7 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
               <Text style={styles.relayPlanEyebrow}>RENAX Terminal Routing</Text>
               <Text style={styles.relayPlanHeading}>This shipment is inter-state</Text>
               <Text style={styles.relayPlanBody}>
-                RENAX can either receive it at the source terminal or send a pickup vehicle to move it there first. Choose the option that works best for this shipment.
+                Choose the first-mile intake and the destination handoff now so ops, riders, and the customer all follow one clear plan from the start.
               </Text>
             </View>
             <View style={styles.relayPlanGrid}>
@@ -883,6 +899,26 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
                         Note: RENAX pickup to terminal can add a small first-mile pickup charge based on distance and vehicle type.
                       </Text>
                     ) : null}
+                  </Pressable>
+                );
+              })}
+            </View>
+            <View style={styles.relayPlanGrid}>
+              {RELAY_LAST_MILE_OPTIONS.map((option) => {
+                const active = relayLastMileStrategy === option.id;
+                return (
+                  <Pressable
+                    key={option.id}
+                    style={[styles.relayPlanCard, active && styles.relayPlanCardActive]}
+                    onPress={() => setRelayLastMileStrategy(option.id)}
+                  >
+                    <View style={[styles.relayPlanCheck, active && styles.relayPlanCheckActive]}>
+                      {active ? <Check color="#002B22" size={14} /> : null}
+                    </View>
+                    <Text style={[styles.relayPlanCardTitle, active && styles.relayPlanCardTitleActive]}>
+                      {option.title}
+                    </Text>
+                    <Text style={styles.relayPlanCardBody}>{option.body}</Text>
                   </Pressable>
                 );
               })}
@@ -1070,9 +1106,14 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
           {category ? <Text style={styles.summaryLine}>Category: {category}</Text> : null}
           {payMethod ? <Text style={styles.summaryLine}>Payment: {payMethod}</Text> : null}
           {isInterStateShipment ? (
-            <Text style={styles.summaryLine}>
-              First Mile: {relayFirstMileStrategy === 'customer_dropoff' ? 'Customer Drop-Off To Terminal' : 'RENAX Pickup To Terminal'}
-            </Text>
+            <>
+              <Text style={styles.summaryLine}>
+                First Mile: {relayFirstMileStrategy === 'customer_dropoff' ? 'Customer Drop-Off To Terminal' : 'RENAX Pickup To Terminal'}
+              </Text>
+              <Text style={styles.summaryLine}>
+                Destination Handoff: {relayLastMileStrategy === 'recipient_pickup' ? 'Recipient Pickup At Terminal' : 'RENAX Delivery From Terminal'}
+              </Text>
+            </>
           ) : null}
         </View>
         <View style={styles.priceBox}>
@@ -1185,6 +1226,11 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
                     {relayFirstMileStrategy === 'customer_dropoff'
                       ? 'This inter-state shipment will wait for source-terminal drop-off and then move into the relay hub workflow.'
                       : 'This inter-state shipment will be offered only to the first-mile pickup queue so RENAX can collect it and move it into the source terminal workflow.'}
+                  </Text>
+                  <Text style={[styles.receiptPlanSub, { marginTop: 8 }]}>
+                    {relayLastMileStrategy === 'recipient_pickup'
+                      ? 'Destination plan: the receiver will pick up at the RENAX destination terminal after ops confirms arrival.'
+                      : 'Destination plan: RENAX ops will release this shipment into the final-mile delivery queue after destination-terminal arrival.'}
                   </Text>
                 </View>
               ) : null}
