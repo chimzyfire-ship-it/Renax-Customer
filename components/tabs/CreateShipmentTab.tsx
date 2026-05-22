@@ -15,7 +15,7 @@ import QRCodeCard from '../QRCodeCard';
 import { buildShipmentQrPayload } from '../../utils/qrPayload';
 import { getActualDrivingDistance } from '../../utils/mapService';
 import { chargeWalletForShipment } from '../../utils/customerData';
-import { generateVerificationCode, resolveRouting } from '../../utils/routingService';
+import { generateVerificationCode, logShipmentEvent, resolveRouting } from '../../utils/routingService';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const NIGERIAN_STATES = [
@@ -247,6 +247,14 @@ async function createCustomerShipmentCheckout(payload: Record<string, unknown>) 
   });
 
   if (error) {
+    const message = error.message || '';
+    if (
+      message.includes('create_customer_shipment_checkout') &&
+      (message.includes('schema cache') || message.includes('Could not find the function'))
+    ) {
+      return createCustomerShipmentCheckoutFallback(payload);
+    }
+
     throw new Error(error.message || 'Shipment checkout failed.');
   }
 
@@ -255,6 +263,101 @@ async function createCustomerShipmentCheckout(payload: Record<string, unknown>) 
     tracking_id?: string;
     pickup_request_id?: string | null;
   } | null;
+}
+
+async function createManagedFirstMilePickupRequest(shipmentId: string) {
+  const { data, error } = await supabase.rpc('create_first_mile_pickup_request', {
+    p_payload: {
+      shipment_id: shipmentId,
+      priority: 'normal',
+    },
+  });
+
+  if (error) {
+    throw new Error(`First-mile pickup queue failed: ${error.message}`);
+  }
+
+  return data as string | null;
+}
+
+async function createCustomerShipmentCheckoutFallback(payload: Record<string, unknown>) {
+  const routingMode = String(payload.routing_mode || 'manual_review');
+  const dispatchStage = String(payload.dispatch_stage || 'pending_routing');
+  const relayFirstMileStrategy = payload.relay_first_mile_strategy ? String(payload.relay_first_mile_strategy) : null;
+  const trackingId = String(payload.tracking_id || `RNX-${Math.floor(100000 + Math.random() * 900000)}`);
+
+  const { data: createdShipment, error } = await supabase
+    .from('shipments')
+    .insert({
+      customer_id: payload.customer_id,
+      tracking_id: trackingId,
+      sender_name: payload.sender_name,
+      sender_phone: payload.sender_phone,
+      pickup_address: payload.pickup_address || '',
+      pickup_landmark: payload.pickup_landmark || null,
+      pickup_lat: payload.pickup_lat || null,
+      pickup_lon: payload.pickup_lon || null,
+      recipient_name: payload.recipient_name,
+      recipient_phone: payload.recipient_phone,
+      delivery_address: payload.delivery_address || '',
+      delivery_landmark: payload.delivery_landmark || null,
+      delivery_lat: payload.delivery_lat || null,
+      delivery_lon: payload.delivery_lon || null,
+      distance_km: payload.distance_km || null,
+      weight_kg: payload.weight_kg || null,
+      dimensions_cm: payload.dimensions_cm || null,
+      package_category: payload.package_category || null,
+      service_level: payload.service_level || null,
+      payment_method: payload.payment_method || null,
+      estimated_price: payload.estimated_price || null,
+      shipment_type: payload.shipment_type || null,
+      status: payload.status || 'pending',
+      pickup_otp: payload.pickup_otp || null,
+      delivery_otp: payload.delivery_otp || null,
+      routing_mode: routingMode,
+      relay_first_mile_strategy: payload.relay_first_mile_strategy || null,
+      relay_last_mile_strategy: payload.relay_last_mile_strategy || null,
+      dispatch_stage: dispatchStage,
+      pickup_state: payload.pickup_state || null,
+      pickup_city: payload.pickup_city || null,
+      delivery_state: payload.delivery_state || null,
+      delivery_city: payload.delivery_city || null,
+      source_terminal_id: payload.source_terminal_id || null,
+      destination_terminal_id: payload.destination_terminal_id || null,
+      package_description: payload.package_description || null,
+    })
+    .select('id, tracking_id')
+    .single();
+
+  if (error) throw error;
+
+  await logShipmentEvent(
+    createdShipment.id,
+    dispatchStage,
+    routingMode === 'relay_terminal' ? 'RENAX Routing Engine' : String(payload.pickup_address || ''),
+    payload.customer_id as string,
+    'customer',
+    String(payload.event_reason || 'Shipment created through customer checkout fallback.')
+  );
+
+  let pickupRequestId: string | null = null;
+  if (routingMode === 'relay_terminal' && relayFirstMileStrategy === 'renax_pickup') {
+    pickupRequestId = await createManagedFirstMilePickupRequest(createdShipment.id);
+    await logShipmentEvent(
+      createdShipment.id,
+      dispatchStage,
+      'RENAX First-Mile Orchestration',
+      payload.customer_id as string,
+      'customer',
+      `First-mile pickup request ${pickupRequestId || 'created'} queued for ops assignment.`
+    );
+  }
+
+  return {
+    shipment_id: createdShipment.id,
+    tracking_id: createdShipment.tracking_id || trackingId,
+    pickup_request_id: pickupRequestId,
+  };
 }
 
 // ─── Reusable Modal Picker ─────────────────────────────────────────────────────
