@@ -56,6 +56,40 @@ function LoadingScreen() {
   );
 }
 
+const ensureCustomerProfile = async (user) => {
+  const userId = user?.id;
+  if (!userId) return null;
+
+  const fallbackName = user?.email?.split('@')[0] || 'Customer';
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, role, full_name, state')
+    .eq('id', userId)
+    .maybeSingle();
+
+  if (error) throw error;
+
+  if (data?.id) {
+    return data;
+  }
+
+  const { data: created, error: createError } = await supabase
+    .from('profiles')
+    .upsert({
+      id: userId,
+      email: user?.email || null,
+      role: 'customer',
+      full_name: fallbackName,
+      state: 'Lagos',
+    })
+    .select('id, role, full_name, state')
+    .single();
+
+  if (createError) throw createError;
+  return created;
+};
+
 function RoleAccessNotice({ role }) {
   const label = role === 'admin' ? 'Admin app' : 'Rider app';
 
@@ -109,6 +143,11 @@ export default function App() {
     if (claimedRole) {
       setUserRole(claimedRole);
       if (claimedRole === 'customer' && nextSession?.user?.id) {
+        try {
+          await ensureCustomerProfile(nextSession.user);
+        } catch (error) {
+          console.log(error);
+        }
         await hydrateCustomerProfile(nextSession.user.id);
       }
       setLoading(false);
@@ -116,6 +155,7 @@ export default function App() {
     }
 
     try {
+      await ensureCustomerProfile(nextSession.user);
       const { data } = await supabase
         .from('profiles')
         .select('role')

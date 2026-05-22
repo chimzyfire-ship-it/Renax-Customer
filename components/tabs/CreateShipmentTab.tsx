@@ -15,7 +15,7 @@ import QRCodeCard from '../QRCodeCard';
 import { buildShipmentQrPayload } from '../../utils/qrPayload';
 import { getActualDrivingDistance } from '../../utils/mapService';
 import { chargeWalletForShipment } from '../../utils/customerData';
-import { generateVerificationCode, logShipmentEvent, resolveRouting } from '../../utils/routingService';
+import { generateVerificationCode, resolveRouting } from '../../utils/routingService';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const NIGERIAN_STATES = [
@@ -241,19 +241,20 @@ async function cancelUnassignedLocalShipment(shipmentId: string) {
   return { cancelled: true, accepted: false, data: null };
 }
 
-async function createManagedFirstMilePickupRequest(shipmentId: string) {
-  const { data, error } = await supabase.rpc('create_first_mile_pickup_request', {
-    p_payload: {
-      shipment_id: shipmentId,
-      priority: 'normal',
-    },
+async function createCustomerShipmentCheckout(payload: Record<string, unknown>) {
+  const { data, error } = await supabase.rpc('create_customer_shipment_checkout', {
+    p_payload: payload,
   });
 
   if (error) {
-    throw new Error(`First-mile pickup queue failed: ${error.message}`);
+    throw new Error(error.message || 'Shipment checkout failed.');
   }
 
-  return data as string | null;
+  return (data || null) as {
+    shipment_id?: string;
+    tracking_id?: string;
+    pickup_request_id?: string | null;
+  } | null;
 }
 
 // ─── Reusable Modal Picker ─────────────────────────────────────────────────────
@@ -546,126 +547,54 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
       const pickupVerificationCode = generateVerificationCode();
       const deliveryVerificationCode = generateVerificationCode();
 
-      const { data: createdShipment, error } = await supabase
-        .from('shipments')
-        .insert({
-          customer_id:       resolvedCustomerId,
-          tracking_id:       generatedId,
-          sender_name:       senderName,
-          sender_phone:      senderPhone,
-          pickup_address:    pickupData?.address || '',
-          pickup_landmark:   pickupLandmark,
-          pickup_lat:        pickupData?.lat || null,
-          pickup_lon:        pickupData?.lon || null,
-          recipient_name:    recipientName,
-          recipient_phone:   recipientPhone,
-          delivery_address:  deliveryData?.address || '',
-          delivery_landmark: deliveryLandmark,
-          delivery_lat:      deliveryData?.lat || null,
-          delivery_lon:      deliveryData?.lon || null,
-          distance_km:       actualDistance || null,
-          weight_kg:         parseFloat(weight),
-          dimensions_cm:     dims || null,
-          package_category:  category,
-          service_level:     serviceSelected,
-          payment_method:    payMethod,
-          estimated_price:   estimatedPrice,
-          shipment_type:     shipmentType,
-          status:            'pending',
-          pickup_otp:        pickupVerificationCode,
-          delivery_otp:      deliveryVerificationCode,
-          routing_mode:      routing.routing_mode,
-          relay_first_mile_strategy: routing.routing_mode === 'relay_terminal' ? relayFirstMileStrategy : null,
-          relay_last_mile_strategy: routing.routing_mode === 'relay_terminal' ? relayLastMileStrategy : null,
-          dispatch_stage:    routing.dispatch_stage,
-          pickup_state:      routing.pickup_state,
-          pickup_city:       routing.pickup_city,
-          delivery_state:    routing.delivery_state,
-          delivery_city:     routing.delivery_city,
-          source_terminal_id: routing.source_terminal_id,
-          destination_terminal_id: routing.destination_terminal_id,
-          package_description: packageDescription,
-        })
-        .select('id, tracking_id, routing_mode, dispatch_stage')
-        .single();
+      const createdShipment = await createCustomerShipmentCheckout({
+        customer_id: resolvedCustomerId,
+        tracking_id: generatedId,
+        sender_name: senderName,
+        sender_phone: senderPhone,
+        pickup_address: pickupData?.address || '',
+        pickup_landmark: pickupLandmark,
+        pickup_lat: pickupData?.lat || null,
+        pickup_lon: pickupData?.lon || null,
+        recipient_name: recipientName,
+        recipient_phone: recipientPhone,
+        delivery_address: deliveryData?.address || '',
+        delivery_landmark: deliveryLandmark,
+        delivery_lat: deliveryData?.lat || null,
+        delivery_lon: deliveryData?.lon || null,
+        distance_km: actualDistance || null,
+        weight_kg: parseFloat(weight),
+        dimensions_cm: dims || null,
+        package_category: category,
+        service_level: serviceSelected,
+        payment_method: payMethod,
+        estimated_price: estimatedPrice,
+        shipment_type: shipmentType,
+        status: 'pending',
+        pickup_otp: pickupVerificationCode,
+        delivery_otp: deliveryVerificationCode,
+        routing_mode: routing.routing_mode,
+        relay_first_mile_strategy: routing.routing_mode === 'relay_terminal' ? relayFirstMileStrategy : null,
+        relay_last_mile_strategy: routing.routing_mode === 'relay_terminal' ? relayLastMileStrategy : null,
+        dispatch_stage: routing.dispatch_stage,
+        pickup_state: routing.pickup_state,
+        pickup_city: routing.pickup_city,
+        delivery_state: routing.delivery_state,
+        delivery_city: routing.delivery_city,
+        source_terminal_id: routing.source_terminal_id,
+        destination_terminal_id: routing.destination_terminal_id,
+        package_description: packageDescription,
+        event_reason: routing.reason,
+      });
 
-      if (error) throw error;
-
-      if (createdShipment?.id) {
-        await logShipmentEvent(
-          createdShipment.id,
-          routing.dispatch_stage,
-          routing.routing_mode === 'relay_terminal'
-            ? 'RENAX Routing Engine'
-            : pickupData?.address || null || undefined,
-          resolvedCustomerId,
-          'customer',
-          routing.reason
-        );
-
-        if (isManagedFirstMilePickup) {
-          const pickupRequestId = await createManagedFirstMilePickupRequest(createdShipment.id);
-          await logShipmentEvent(
-            createdShipment.id,
-            routing.dispatch_stage,
-            'RENAX First-Mile Orchestration',
-            resolvedCustomerId,
-            'customer',
-            `First-mile pickup request ${pickupRequestId || 'created'} queued for ops assignment.`
-          );
-        }
-
-        const notificationRows = [
-          senderPhone && pickupVerificationCode
-            ? {
-                shipment_id: createdShipment.id,
-                customer_id: resolvedCustomerId,
-                channel: 'sms',
-                recipient: senderPhone,
-                template_key: 'pickup_otp',
-                title: 'RENAX Pickup OTP',
-                body: `Your RENAX pickup verification code for ${generatedId} is ${pickupVerificationCode}.`,
-                payload: {
-                  tracking_id: generatedId,
-                  otp: pickupVerificationCode,
-                  role: 'sender',
-                },
-              }
-            : null,
-          recipientPhone && deliveryVerificationCode
-            ? {
-                shipment_id: createdShipment.id,
-                customer_id: resolvedCustomerId,
-                channel: 'sms',
-                recipient: recipientPhone,
-                template_key: 'delivery_otp',
-                title: 'RENAX Delivery OTP',
-                body: `Your RENAX delivery verification code for ${generatedId} is ${deliveryVerificationCode}.`,
-                payload: {
-                  tracking_id: generatedId,
-                  otp: deliveryVerificationCode,
-                  role: 'recipient',
-                },
-              }
-            : null,
-        ].filter(Boolean);
-
-        if (notificationRows.length > 0) {
-          try {
-            const { error: queueErr } = await supabase
-              .from('notification_delivery_queue')
-              .insert(notificationRows);
-            if (queueErr) setQueueInsertFailed(true);
-          } catch {
-            setQueueInsertFailed(true);
-          }
-        }
+      if (!createdShipment?.shipment_id) {
+        throw new Error('Shipment checkout did not return a shipment id.');
       }
 
       // Same-state shipments remain provisional until a live rider accepts.
-      if (requiresImmediateAssignment && createdShipment?.id) {
+      if (requiresImmediateAssignment && createdShipment?.shipment_id) {
         setPendingLocalMatch({
-          shipmentId: createdShipment.id,
+          shipmentId: createdShipment.shipment_id,
           trackingId: createdShipment.tracking_id || generatedId,
           pickupOtp: pickupVerificationCode,
           deliveryOtp: deliveryVerificationCode,
@@ -674,11 +603,11 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
         setSearchingRiders(true);
         setNoRidersFound(false);
 
-        const acceptance = await waitForLocalRiderAcceptance(createdShipment.id);
+        const acceptance = await waitForLocalRiderAcceptance(createdShipment.shipment_id);
         setSearchingRiders(false);
 
         if (!acceptance.matched) {
-          const cancellation = await cancelUnassignedLocalShipment(createdShipment.id);
+          const cancellation = await cancelUnassignedLocalShipment(createdShipment.shipment_id);
           if (cancellation.accepted) {
             setSearchingRiders(false);
           } else {
@@ -690,10 +619,10 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
         }
       }
 
-      if (payMethod === 'RENAX Wallet' && createdShipment?.id) {
+      if (payMethod === 'RENAX Wallet' && createdShipment?.shipment_id) {
         await chargeWalletForShipment(
           resolvedCustomerId,
-          createdShipment.id,
+          createdShipment.shipment_id,
           createdShipment.tracking_id || generatedId,
           estimatedPrice
         );
