@@ -630,9 +630,6 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
         }
       );
 
-      const isManagedFirstMilePickup =
-        routing.routing_mode === 'relay_terminal' &&
-        relayFirstMileStrategy === 'renax_pickup';
       const requiresImmediateAssignment =
         routing.routing_mode === 'last_mile_local' &&
         routing.dispatch_stage === 'awaiting_rider_acceptance';
@@ -1257,7 +1254,7 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
                   <Text style={styles.receiptPlanSub}>
                     {relayFirstMileStrategy === 'customer_dropoff'
                       ? 'This inter-state shipment will wait for source-terminal drop-off and then move into the relay hub workflow.'
-                      : 'This inter-state shipment will be offered only to the first-mile pickup queue so RENAX can collect it and move it into the source terminal workflow.'}
+                      : 'This inter-state shipment will wait in the controlled first-mile pickup queue. The pickup code below is only consumed when RENAX collects it from the sender.'}
                   </Text>
                   <Text style={[styles.receiptPlanSub, { marginTop: 8 }]}>
                     {relayLastMileStrategy === 'recipient_pickup'
@@ -1339,14 +1336,14 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
                   {/* QR Grid */}
                   <View style={styles.qrGrid}>
                     <QRCodeCard
-                      label="Pickup QR"
+                      label="Pickup Handoff QR"
                       value={pickupOtp}
                       payload={buildShipmentQrPayload({
                         type: 'pickup',
                         otp: pickupOtp,
                         trackingId: createdOrderId,
                       })}
-                      note="Rider scans this from the sender phone at pickup."
+                      note="RENAX pickup agent scans this from the sender phone at handoff."
                       size={124}
                     />
                     <QRCodeCard
@@ -1384,7 +1381,7 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
                       <Pressable
                         style={[styles.otpActionBtn, styles.otpShareBtn]}
                         onPress={() => Share.share({
-                          message: `Your RENAX pickup OTP for order ${createdOrderId} is: ${pickupOtp}. Show this to the rider at pickup.`,
+                          message: `Your RENAX pickup OTP for order ${createdOrderId} is: ${pickupOtp}. Show this to the RENAX pickup agent at sender handoff.`,
                           title: 'RENAX Pickup OTP',
                         })}
                       >
