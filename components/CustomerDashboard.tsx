@@ -16,6 +16,7 @@ import { Outfit_400Regular, Outfit_600SemiBold, Outfit_700Bold } from '@expo-goo
 import {
   Bell,
   Calendar,
+  Car,
   ChevronLeft,
   ChevronRight,
   Clock,
@@ -36,6 +37,7 @@ import LanguageFloater from './LanguageFloater';
 import TrackShipmentTab from './tabs/TrackShipmentTab';
 import CreateShipmentTab from './tabs/CreateShipmentTab';
 import CreateAgroShipmentTab from './tabs/CreateAgroShipmentTab';
+import DeliverAndEarnTab from './tabs/DeliverAndEarnTab';
 import BookingHistoryTab from './tabs/BookingHistoryTab';
 import PaymentMethodsTab from './tabs/PaymentMethodsTab';
 import SettingsTab from './tabs/SettingsTab';
@@ -56,6 +58,7 @@ const NAV_ITEMS = [
   { key: 'track', icon: Navigation, labelKey: 'dash.track' },
   { key: 'create', icon: PlusCircle, labelKey: 'dash.create' },
   { key: 'agro', icon: Leaf, labelKey: 'dash.agro' },
+  { key: 'deliver_earn', icon: Car, labelKey: 'dash.deliverEarn', labelFallback: 'Deliver & Earn' },
   { key: 'history', icon: Clock, labelKey: 'dash.history' },
   { key: 'payment', icon: CreditCard, labelKey: 'dash.payment2' },
   { key: 'support', icon: Headphones, labelKey: 'nav.support' },
@@ -327,7 +330,7 @@ export default function CustomerDashboard({ userState = 'Lagos', userName = 'Ade
               <Icon color={isActive ? '#ccfd3a' : 'rgba(255,255,255,0.5)'} size={20} />
               {(!(!isMobile && desktopCollapsed)) ? (
                 <Text style={[styles.navItemText, isActive && styles.navItemTextActive]}>
-                  {t(item.labelKey)}
+                  {t(item.labelKey, 'labelFallback' in item ? item.labelFallback : item.labelKey)}
                 </Text>
               ) : null}
             </Pressable>
@@ -570,6 +573,9 @@ export default function CustomerDashboard({ userState = 'Lagos', userName = 'Ade
         break;
       case 'agro':
         tabContent = <CreateAgroShipmentTab customerId={customerId} />;
+        break;
+      case 'deliver_earn':
+        tabContent = <DeliverAndEarnTab />;
         break;
       case 'history':
         tabContent = <BookingHistoryTab customerId={customerId} onTrackShipment={handleTrackShipment} />;
