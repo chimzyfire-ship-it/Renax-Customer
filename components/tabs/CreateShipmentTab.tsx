@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, Pressable, TextInput,
-  useWindowDimensions, Modal, FlatList, ActivityIndicator, Share, Platform,
+  useWindowDimensions, Modal, FlatList, ActivityIndicator, Share,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import {
@@ -15,7 +15,7 @@ import QRCodeCard from '../QRCodeCard';
 import { buildShipmentQrPayload } from '../../utils/qrPayload';
 import { getActualDrivingDistance } from '../../utils/mapService';
 import { chargeWalletForShipment } from '../../utils/customerData';
-import { generateVerificationCode, logShipmentEvent, resolveRouting } from '../../utils/routingService';
+import { generateVerificationCode, logShipmentEvent, resolveRouting, type DispatchStage } from '../../utils/routingService';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const NIGERIAN_STATES = [
@@ -95,12 +95,12 @@ const assignmentCopy = (shipmentType: 'intra_state' | 'inter_state' | 'unknown',
   }
 
   return {
-    searchingTitle: 'Searching live riders across Lagos state...',
-    searchingSub: 'Waiting for the closest available rider to accept.',
-    retryLabel: 'REFRESH LIVE RIDER SEARCH',
-    retryHint: 'We now wait up to 90 seconds for a rider to accept before failing this same-city request.',
-    createCta: 'MATCHING LIVE RIDER...',
-    noMatchError: 'No rider accepted this intra-state shipment yet. This request was closed and removed from rider screens until you refresh it.',
+    searchingTitle: 'Searching RENAX riders and verified car operators...',
+    searchingSub: 'Waiting for the closest eligible RENAX carrier to accept.',
+    retryLabel: 'REFRESH CARRIER SEARCH',
+    retryHint: 'We retry RENAX staff riders first, then verified Deliver & Earn car operators where available.',
+    createCta: 'MATCHING RENAX CARRIER...',
+    noMatchError: 'No RENAX rider or verified Deliver & Earn operator accepted within this window yet. The request remains in RENAX operations for controlled dispatch.',
   };
 };
 
@@ -115,26 +115,13 @@ const PRICING_FACTORS = {
   } as Record<string, number>,
 };
 
-async function hasLiveLocalRider(params: { pickupState: string; pickupCity: string }) {
-  const recentCutoff = new Date(Date.now() - 3 * 60 * 1000).toISOString();
-  const { data, error } = await supabase
-    .from('rider_locations')
-    .select('rider_id, last_seen, current_shipment_id, metadata')
-    .eq('is_online', true)
-    .is('current_shipment_id', null)
-    .gte('last_seen', recentCutoff);
-
-  if (error || !data) return false;
-
-  const targetState = params.pickupState.trim().toLowerCase();
-
-  return data.some((row: any) => {
-    const riderState = String(row?.metadata?.state || '').trim().toLowerCase();
-
-    if (!riderState || riderState !== targetState) return false;
-    return true;
-  });
-}
+type PendingLocalMatch = {
+  shipmentId: string;
+  trackingId: string;
+  pickupOtp: string;
+  deliveryOtp: string;
+  customerId?: string;
+};
 
 function hasShipmentBeenAccepted(data: any) {
   if (!data) return false;
@@ -142,6 +129,7 @@ function hasShipmentBeenAccepted(data: any) {
   return Boolean(
     data.assigned_rider_id ||
     data.final_mile_rider_id ||
+    data.deliver_and_earn_operator_id ||
     ['awaiting_source_terminal', 'out_for_delivery', 'delivered'].includes(data.dispatch_stage)
   );
 }
@@ -149,7 +137,7 @@ function hasShipmentBeenAccepted(data: any) {
 async function fetchShipmentAssignmentState(shipmentId: string) {
   const { data, error } = await supabase
     .from('shipments')
-    .select('assigned_rider_id, final_mile_rider_id, dispatch_stage, status')
+    .select('assigned_rider_id, final_mile_rider_id, deliver_and_earn_operator_id, dispatch_stage, status, supply_mode')
     .eq('id', shipmentId)
     .maybeSingle();
 
@@ -213,32 +201,22 @@ async function waitForLocalRiderAcceptance(shipmentId: string, timeoutMs = 90000
   });
 }
 
-async function cancelUnassignedLocalShipment(shipmentId: string) {
-  const latestState = await fetchShipmentAssignmentState(shipmentId);
-  if (hasShipmentBeenAccepted(latestState)) {
-    return { cancelled: false, accepted: true, data: latestState };
-  }
-
-  const { error } = await supabase
-    .from('shipments')
-    .update({
-      status: 'cancelled',
-      dispatch_stage: 'cancelled',
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', shipmentId)
-    .eq('dispatch_stage', 'awaiting_rider_acceptance')
-    .is('assigned_rider_id', null)
-    .is('final_mile_rider_id', null);
+async function requestDeliverAndEarnCarrierMatch(shipmentId: string) {
+  const { data, error } = await supabase.rpc('request_customer_deliver_and_earn_match', {
+    p_payload: { shipment_id: shipmentId },
+  });
 
   if (error) {
-    const refreshedState = await fetchShipmentAssignmentState(shipmentId);
-    if (hasShipmentBeenAccepted(refreshedState)) {
-      return { cancelled: false, accepted: true, data: refreshedState };
-    }
+    console.warn('Deliver & Earn fallback match was not available for this shipment.', error);
+    return { available: false, offersCreated: 0, alreadyAssigned: false };
   }
 
-  return { cancelled: true, accepted: false, data: null };
+  const result = (data || {}) as { offers_created?: number; already_assigned?: boolean };
+  return {
+    available: true,
+    offersCreated: Number(result.offers_created || 0),
+    alreadyAssigned: Boolean(result.already_assigned),
+  };
 }
 
 async function createCustomerShipmentCheckout(payload: Record<string, unknown>) {
@@ -282,7 +260,7 @@ async function createManagedFirstMilePickupRequest(shipmentId: string) {
 
 async function createCustomerShipmentCheckoutFallback(payload: Record<string, unknown>) {
   const routingMode = String(payload.routing_mode || 'manual_review');
-  const dispatchStage = String(payload.dispatch_stage || 'pending_routing');
+  const dispatchStage = String(payload.dispatch_stage || 'pending_routing') as DispatchStage;
   const relayFirstMileStrategy = payload.relay_first_mile_strategy ? String(payload.relay_first_mile_strategy) : null;
   const trackingId = String(payload.tracking_id || `RNX-${Math.floor(100000 + Math.random() * 900000)}`);
 
@@ -443,13 +421,7 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
   const [searchingRiders, setSearchingRiders] = useState(false);
   const [noRidersFound, setNoRidersFound] = useState(false);
   const [matchCountdown, setMatchCountdown] = useState(90);
-  const [pendingLocalMatch, setPendingLocalMatch] = useState<{
-    shipmentId: string;
-    trackingId: string;
-    pickupOtp: string;
-    deliveryOtp: string;
-    customerId?: string;
-  } | null>(null);
+  const [pendingLocalMatch, setPendingLocalMatch] = useState<PendingLocalMatch | null>(null);
 
   // Pickers visibility
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
@@ -467,6 +439,16 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
     }, 1000);
     return () => clearInterval(timer);
   }, [searchingRiders]);
+
+  const showMatchedShipmentReceipt = (match: PendingLocalMatch) => {
+    setCreatedOrderId(match.trackingId);
+    setPickupOtp(match.pickupOtp);
+    setDeliveryOtp(match.deliveryOtp);
+    setPendingLocalMatch(null);
+    setNoRidersFound(false);
+    setFormError('');
+    setShowReceiptModal(true);
+  };
 
   const retryPendingLocalMatch = async () => {
     if (!pendingLocalMatch) return;
@@ -486,34 +468,37 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
       .eq('id', pendingLocalMatch.shipmentId);
 
     const acceptance = await waitForLocalRiderAcceptance(pendingLocalMatch.shipmentId);
-    setSearchingRiders(false);
-    setLoading(false);
 
     if (!acceptance.matched) {
-      const cancellation = await cancelUnassignedLocalShipment(pendingLocalMatch.shipmentId);
-      if (cancellation.accepted) {
-        setCreatedOrderId(pendingLocalMatch.trackingId);
-        setPickupOtp(pendingLocalMatch.pickupOtp);
-        setDeliveryOtp(pendingLocalMatch.deliveryOtp);
-        setPendingLocalMatch(null);
-        setNoRidersFound(false);
-        setFormError('');
-        setShowReceiptModal(true);
+      const deliverAndEarnMatch = await requestDeliverAndEarnCarrierMatch(pendingLocalMatch.shipmentId);
+
+      if (deliverAndEarnMatch.alreadyAssigned) {
+        showMatchedShipmentReceipt(pendingLocalMatch);
+        setSearchingRiders(false);
+        setLoading(false);
         return;
       }
 
+      if (deliverAndEarnMatch.available && deliverAndEarnMatch.offersCreated > 0) {
+        const secondAcceptance = await waitForLocalRiderAcceptance(pendingLocalMatch.shipmentId, 90000);
+        if (secondAcceptance.matched) {
+          showMatchedShipmentReceipt(pendingLocalMatch);
+          setSearchingRiders(false);
+          setLoading(false);
+          return;
+        }
+      }
+
       setNoRidersFound(true);
-      setFormError('No rider accepted this intra-state shipment yet. This request was closed and removed from rider screens until you refresh it.');
+      setFormError(assignmentUiCopy.noMatchError);
+      setSearchingRiders(false);
+      setLoading(false);
       return;
     }
 
-    setCreatedOrderId(pendingLocalMatch.trackingId);
-    setPickupOtp(pendingLocalMatch.pickupOtp);
-    setDeliveryOtp(pendingLocalMatch.deliveryOtp);
-    setPendingLocalMatch(null);
-    setNoRidersFound(false);
-    setFormError('');
-    setShowReceiptModal(true);
+    showMatchedShipmentReceipt(pendingLocalMatch);
+    setSearchingRiders(false);
+    setLoading(false);
   };
 
   // ── Derived State & Calculations ─────────────────────────────────────────────
@@ -693,29 +678,45 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
 
       // Same-state shipments remain provisional until a live rider accepts.
       if (requiresImmediateAssignment && createdShipment?.shipment_id) {
-        setPendingLocalMatch({
+        const localMatch = {
           shipmentId: createdShipment.shipment_id,
           trackingId: createdShipment.tracking_id || generatedId,
           pickupOtp: pickupVerificationCode,
           deliveryOtp: deliveryVerificationCode,
           customerId: resolvedCustomerId,
-        });
+        };
+
+        setPendingLocalMatch(localMatch);
         setSearchingRiders(true);
         setNoRidersFound(false);
 
         const acceptance = await waitForLocalRiderAcceptance(createdShipment.shipment_id);
-        setSearchingRiders(false);
 
         if (!acceptance.matched) {
-          const cancellation = await cancelUnassignedLocalShipment(createdShipment.shipment_id);
-          if (cancellation.accepted) {
+          const deliverAndEarnMatch = await requestDeliverAndEarnCarrierMatch(createdShipment.shipment_id);
+
+          if (deliverAndEarnMatch.alreadyAssigned) {
+            setSearchingRiders(false);
+          } else if (deliverAndEarnMatch.available && deliverAndEarnMatch.offersCreated > 0) {
+            const secondAcceptance = await waitForLocalRiderAcceptance(createdShipment.shipment_id, 90000);
+            if (!secondAcceptance.matched) {
+              setNoRidersFound(true);
+              setFormError(assignmentUiCopy.noMatchError);
+              setLoading(false);
+              setSearchingRiders(false);
+              return;
+            }
+
             setSearchingRiders(false);
           } else {
             setNoRidersFound(true);
             setFormError(assignmentUiCopy.noMatchError);
             setLoading(false);
+            setSearchingRiders(false);
             return;
           }
+        } else {
+          setSearchingRiders(false);
         }
       }
 
@@ -728,7 +729,7 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
         );
       }
 
-      setCreatedOrderId(generatedId);
+      setCreatedOrderId(createdShipment?.tracking_id || generatedId);
       setPickupOtp(pickupVerificationCode);
       setDeliveryOtp(deliveryVerificationCode);
       setPendingLocalMatch(null);
@@ -1267,13 +1268,13 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
               {searchingRiders && (
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#fffbeb', padding: 12, borderRadius: 10, borderWidth: 1, borderColor: '#fde68a', width: '100%', marginBottom: 10 }}>
                   <ActivityIndicator color="#B45309" size="small" />
-                  <Text style={{ fontFamily: 'Outfit_6', fontSize: 13, color: '#92400E', flex: 1 }}>Searching for available riders nearby...</Text>
+                  <Text style={{ fontFamily: 'Outfit_6', fontSize: 13, color: '#92400E', flex: 1 }}>Searching for eligible RENAX carriers nearby...</Text>
                 </View>
               )}
               {noRidersFound && (
                 <View style={{ backgroundColor: '#FEF2F2', padding: 12, borderRadius: 10, borderWidth: 1, borderColor: '#FCA5A5', width: '100%', marginBottom: 10 }}>
-                  <Text style={{ fontFamily: 'Outfit_7', fontSize: 13, color: '#DC2626', marginBottom: 4 }}>No Riders Available Right Now</Text>
-                  <Text style={{ fontFamily: 'Outfit_4', fontSize: 12, color: '#7F1D1D' }}>Your shipment is queued. A rider will be assigned as soon as one comes online.</Text>
+                  <Text style={{ fontFamily: 'Outfit_7', fontSize: 13, color: '#DC2626', marginBottom: 4 }}>No Carrier Accepted Yet</Text>
+                  <Text style={{ fontFamily: 'Outfit_4', fontSize: 12, color: '#7F1D1D' }}>Your shipment remains in RENAX operations for controlled dispatch to a staff rider or verified Deliver & Earn operator.</Text>
                 </View>
               )}
 
