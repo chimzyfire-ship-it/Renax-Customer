@@ -17,15 +17,6 @@ const NIGERIAN_STATES = [
   'Taraba','Yobe','Zamfara'
 ];
 
-const STATE_COORDS = {
-  'Lagos': { lat: 6.5244, lng: 3.3792 },
-  'FCT - Abuja': { lat: 9.0765, lng: 7.3986 },
-  'Rivers': { lat: 4.8156, lng: 7.0498 },
-  'Kano': { lat: 12.0022, lng: 8.5920 },
-  'Oyo': { lat: 7.8, lng: 3.93 },
-  'Anambra': { lat: 6.21, lng: 7.07 },
-};
-
 const SHIP_TYPES = [
   { id: 'personal', label: 'Personal Parcels', desc: 'Documents, gifts, personal items' },
   { id: 'retail', label: 'SME / Retail', desc: 'E-commerce & bulk distributions' },
@@ -38,9 +29,22 @@ const FREQ_TYPES = [
   { id: 'daily', label: 'Daily Corporate Volume' },
 ];
 
-export default function AuthScreen({ onAuthenticated }) {
+type AuthenticatedProfile = {
+  state?: string;
+  shipType?: string;
+  freq?: string;
+};
+
+type AuthScreenProps = {
+  onAuthenticated?: (profile: AuthenticatedProfile) => void;
+};
+
+const getErrorMessage = (error: unknown, fallback: string) =>
+  error instanceof Error ? error.message : fallback;
+
+export default function AuthScreen({ onAuthenticated }: AuthScreenProps) {
   const { t } = useTranslation();
-  const { width, height } = useWindowDimensions();
+  const { width } = useWindowDimensions();
   const isMobile = width < 900;
 
   const [fontsLoaded] = useFonts({
@@ -83,12 +87,15 @@ export default function AuthScreen({ onAuthenticated }) {
     setAuthError('');
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data, error } = await supabase.auth.signInWithPassword({
         email: email.trim(),
         password,
       });
 
       if (error) throw error;
+      if (!data.session) {
+        throw new Error('Sign-in did not create a local session yet. Please confirm the account email if required, then sign in again.');
+      }
 
       onAuthenticated?.({
         state: selectedState || 'Lagos',
@@ -96,7 +103,7 @@ export default function AuthScreen({ onAuthenticated }) {
         freq: selectedFreq,
       });
     } catch (error) {
-      setAuthError(error?.message || 'Could not sign in right now.');
+      setAuthError(getErrorMessage(error, 'Could not sign in right now.'));
     } finally {
       setSubmitting(false);
     }
@@ -136,6 +143,13 @@ export default function AuthScreen({ onAuthenticated }) {
         throw new Error('Signup did not return a user account.');
       }
 
+      if (!data.session) {
+        setMode('signin');
+        setOnboardStep(0);
+        setAuthError('Account created. Confirm the email if Supabase requested it, then sign in here on localhost to unlock verified actions.');
+        return;
+      }
+
       const { error: profileError } = await supabase.from('profiles').upsert({
         id: data.user.id,
         email: trimmedEmail,
@@ -153,7 +167,7 @@ export default function AuthScreen({ onAuthenticated }) {
         freq: selectedFreq,
       });
     } catch (error) {
-      setAuthError(error?.message || 'Could not create your account right now.');
+      setAuthError(getErrorMessage(error, 'Could not create your account right now.'));
     } finally {
       setSubmitting(false);
     }
@@ -305,7 +319,7 @@ export default function AuthScreen({ onAuthenticated }) {
               resizeMode="contain"
             />
             <Text style={{ fontFamily: 'PlusJakartaSans_6', fontSize: 14, color: 'rgba(200,255,220,0.55)', letterSpacing: 2, textTransform: 'uppercase' }}>
-              Nigeria's Logistics Platform
+              {"Nigeria's Logistics Platform"}
             </Text>
           </Animated.View>
 
@@ -467,7 +481,7 @@ export default function AuthScreen({ onAuthenticated }) {
         <Animated.View entering={FadeIn.duration(800)} style={styles.leftPanel}>
           <Image source={require('../assets/images/logo.jpg')} style={styles.authLogo} resizeMode="contain" />
           <Text style={styles.authBrandTitle}>RENAX Logistics</Text>
-          <Text style={styles.authBrandSub}>Nigeria's fastest growing{'\n'}logistics platform.</Text>
+          <Text style={styles.authBrandSub}>{"Nigeria's fastest growing"}{'\n'}logistics platform.</Text>
 
           <View style={{ gap: 16, marginTop: 40 }}>
             {[
@@ -821,6 +835,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: 'rgba(200,255,220,0.7)',
     flex: 1,
+  },
+  inlineError: {
+    fontFamily: 'Outfit_6',
+    fontSize: 13,
+    color: '#FCA5A5',
+    lineHeight: 19,
   },
 
   // Onboarding

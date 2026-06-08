@@ -111,6 +111,7 @@ export type DeliverAndEarnPayout = {
 
 export type DeliverAndEarnSnapshot = {
   userId: string | null;
+  isDemoPreview: boolean;
   profile: DeliverAndEarnProfile | null;
   vehicles: DeliverAndEarnVehicle[];
   availability: DeliverAndEarnAvailability | null;
@@ -137,6 +138,7 @@ export type DeliverAndEarnApplicationPayload = {
 
 const EMPTY_SNAPSHOT: DeliverAndEarnSnapshot = {
   userId: null,
+  isDemoPreview: false,
   profile: null,
   vehicles: [],
   availability: null,
@@ -145,15 +147,31 @@ const EMPTY_SNAPSHOT: DeliverAndEarnSnapshot = {
   payouts: [],
 };
 
-export async function getCurrentDeliverAndEarnUserId() {
-  const { data: { user }, error } = await supabase.auth.getUser();
-  if (error) throw error;
-  return user?.id ?? null;
+const LOCAL_DELIVER_AND_EARN_PREVIEW_ID = 'local-deliver-and-earn-preview';
+
+export function createDeliverAndEarnPreviewSnapshot(userId?: string | null): DeliverAndEarnSnapshot {
+  return {
+    ...EMPTY_SNAPSHOT,
+    userId: userId || LOCAL_DELIVER_AND_EARN_PREVIEW_ID,
+    isDemoPreview: true,
+  };
 }
 
-export async function fetchDeliverAndEarnSnapshot(): Promise<DeliverAndEarnSnapshot> {
+export async function getCurrentDeliverAndEarnUserId() {
+  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError) throw sessionError;
+  if (!session?.user?.id) return null;
+
+  const { data: { user }, error } = await supabase.auth.getUser();
+  if (error) throw error;
+  return user?.id ?? session.user.id;
+}
+
+export async function fetchDeliverAndEarnSnapshot(previewUserId?: string | null): Promise<DeliverAndEarnSnapshot> {
   const userId = await getCurrentDeliverAndEarnUserId();
-  if (!userId) return EMPTY_SNAPSHOT;
+  if (!userId) {
+    return createDeliverAndEarnPreviewSnapshot(previewUserId);
+  }
 
   const [profileResult, vehiclesResult, availabilityResult, offersResult, earningsResult, payoutsResult] = await Promise.all([
     supabase
@@ -201,6 +219,7 @@ export async function fetchDeliverAndEarnSnapshot(): Promise<DeliverAndEarnSnaps
 
   return {
     userId,
+    isDemoPreview: false,
     profile: (profileResult.data as DeliverAndEarnProfile | null) ?? null,
     vehicles: (vehiclesResult.data as DeliverAndEarnVehicle[] | null) ?? [],
     availability: (availabilityResult.data as DeliverAndEarnAvailability | null) ?? null,

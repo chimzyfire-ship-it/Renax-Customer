@@ -168,8 +168,12 @@ const buildReference = (prefix: string) =>
   `${prefix}-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
 
 export async function resolveCustomerId() {
+  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError) throw sessionError;
+  if (!session?.user?.id) return DEMO_CUSTOMER_ID;
+
   const { data: { user } } = await supabase.auth.getUser();
-  return user?.id ?? DEMO_CUSTOMER_ID;
+  return user?.id ?? session.user.id;
 }
 
 export async function fetchCurrentProfile(customerId?: string | null) {

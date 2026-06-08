@@ -23,6 +23,7 @@ import {
   Wallet,
 } from 'lucide-react-native';
 import {
+  createDeliverAndEarnPreviewSnapshot,
   fetchDeliverAndEarnSnapshot,
   requestDeliverAndEarnPayout,
   setDeliverAndEarnOnline,
@@ -59,6 +60,13 @@ const initialForm: DeliverAndEarnApplicationPayload = {
   submit: false,
 };
 
+const DEMO_PREVIEW_MESSAGE =
+  'Local testing mode: the Deliver & Earn application is open for this dashboard account. Final submission, online access, and payouts still depend on the current Supabase session and RENAX validation records.';
+
+type DeliverAndEarnTabProps = {
+  customerId?: string | null;
+};
+
 function statusLabel(value?: string | null) {
   if (!value) return 'Not started';
   return value.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
@@ -71,7 +79,7 @@ function statusColor(value?: string | null) {
   return '#4B5563';
 }
 
-export default function DeliverAndEarnTab() {
+export default function DeliverAndEarnTab({ customerId }: DeliverAndEarnTabProps) {
   const { width } = useWindowDimensions();
   const isCompact = width < 760;
   const [snapshot, setSnapshot] = useState<DeliverAndEarnSnapshot | null>(null);
@@ -84,16 +92,17 @@ export default function DeliverAndEarnTab() {
   const loadSnapshot = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await fetchDeliverAndEarnSnapshot();
+      const data = await fetchDeliverAndEarnSnapshot(customerId);
       setSnapshot(data);
       setMessage('');
     } catch (error) {
       console.error('Failed to load Deliver & Earn data', error);
-      setMessage('Deliver & Earn is waiting for its foundation migration to be applied.');
+      setSnapshot(createDeliverAndEarnPreviewSnapshot(customerId));
+      setMessage('Deliver & Earn records could not be loaded yet, so the application is open in local testing mode.');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [customerId]);
 
   useEffect(() => {
     loadSnapshot();
@@ -126,12 +135,21 @@ export default function DeliverAndEarnTab() {
   const primaryVehicle = snapshot?.vehicles[0] ?? null;
   const isApproved = profile?.application_status === 'approved' && profile.operator_status === 'active';
   const isOnline = Boolean(snapshot?.availability?.is_online);
+  const isDemoPreview = Boolean(snapshot?.isDemoPreview);
 
   const updateField = (key: keyof DeliverAndEarnApplicationPayload, value: string) => {
     setForm((current) => ({ ...current, [key]: value }));
   };
 
   const handleSubmit = async (submit: boolean) => {
+    if (isDemoPreview) {
+      setMessage(
+        submit
+          ? 'This is local preview access. Sign in with a real RENAX account to submit your car for validation.'
+          : 'Preview draft is kept on this screen. Sign in with a real RENAX account to save it to RENAX validation records.',
+      );
+      return;
+    }
     setSaving(true);
     setMessage('');
     try {
@@ -148,6 +166,10 @@ export default function DeliverAndEarnTab() {
 
   const handleOnlineToggle = async () => {
     if (!isApproved) return;
+    if (isDemoPreview) {
+      setMessage('This is local preview access. Only a verified RENAX operator account can go online for shipments.');
+      return;
+    }
     setBusyAction('online');
     setMessage('');
     try {
@@ -162,6 +184,10 @@ export default function DeliverAndEarnTab() {
   };
 
   const handlePayout = async () => {
+    if (isDemoPreview) {
+      setMessage('This is local preview access. Payouts require a real RENAX account with verified bank details.');
+      return;
+    }
     setBusyAction('payout');
     setMessage('');
     try {
@@ -185,16 +211,6 @@ export default function DeliverAndEarnTab() {
     );
   }
 
-  if (!snapshot?.userId) {
-    return (
-      <View style={styles.centerState}>
-        <ShieldCheck color="#004d3d" size={38} />
-        <Text style={styles.centerTitle}>Sign in required</Text>
-        <Text style={styles.centerText}>Deliver & Earn applications need a real RENAX account for identity, vehicle, and payout verification.</Text>
-      </View>
-    );
-  }
-
   const statCards = [
     { label: 'Available', value: formatAmount(money.available), icon: Wallet, color: '#047857' },
     { label: 'Pending', value: formatAmount(money.pending), icon: Clock, color: '#B45309' },
@@ -214,6 +230,13 @@ export default function DeliverAndEarnTab() {
           <Text style={styles.refreshBtnText}>Refresh</Text>
         </Pressable>
       </Animated.View>
+
+      {isDemoPreview ? (
+        <View style={styles.previewNotice}>
+          <ShieldCheck size={16} color="#004d3d" />
+          <Text style={styles.previewNoticeText}>{DEMO_PREVIEW_MESSAGE}</Text>
+        </View>
+      ) : null}
 
       {message ? (
         <View style={styles.notice}>
@@ -415,6 +438,8 @@ const styles = StyleSheet.create({
   pageSub: { fontFamily: 'Outfit_4', fontSize: 15, color: '#6B7280', lineHeight: 22, maxWidth: 760, marginTop: 4 },
   refreshBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 8, paddingHorizontal: 14, paddingVertical: 10, backgroundColor: '#fff' },
   refreshBtnText: { fontFamily: 'Outfit_6', fontSize: 13, color: '#004d3d' },
+  previewNotice: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, backgroundColor: '#ECFDF5', borderWidth: 1, borderColor: '#A7F3D0', borderRadius: 8, padding: 12 },
+  previewNoticeText: { fontFamily: 'Outfit_4', fontSize: 13, color: '#004d3d', flex: 1, lineHeight: 19 },
   notice: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#FEF3C7', borderWidth: 1, borderColor: '#FCD34D', borderRadius: 8, padding: 12 },
   noticeText: { fontFamily: 'Outfit_4', fontSize: 13, color: '#92400E', flex: 1 },
   stack: { flexDirection: 'column' },

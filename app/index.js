@@ -259,7 +259,7 @@ export default function App() {
   if (!session) return <AuthScreenNew onAuthenticated={() => {}} />;
   if (userRole === 'admin') return <RoleAccessNotice role="admin" />;
   if (userRole === 'driver' || userRole === 'rider') return <RoleAccessNotice role="rider" />;
-  return <CustomerDashboard initialNav={targetNav} />;
+  return <CustomerDashboard initialNav={targetNav} userName={userProfile.name} userState={userProfile.state} />;
 }
 
 const styles = StyleSheet.create({

@@ -24,6 +24,9 @@ import {
   ChevronRight,
   ChevronUp,
   Package,
+  Car,
+  Wallet,
+  ShieldCheck,
 } from 'lucide-react-native';
 import Animated, {
   FadeIn,
@@ -152,6 +155,30 @@ const AGRO_STEPS = [
   { step: '3. In-Transit Tracking', desc: 'Track your shipment in real-time' },
   { step: '4. Delivered Fresh', desc: 'We deliver on time, every time' },
   { step: '5. Market Ready', desc: 'Your produce arrives fresh and ready to sell' },
+];
+
+interface RiderFeature {
+  icon: 'Car' | 'Wallet' | 'ShieldCheck';
+  title: string;
+  desc: string;
+}
+
+const RIDER_FEATURES: RiderFeature[] = [
+  {
+    icon: 'Car',
+    title: 'Be Your Own Boss',
+    desc: 'Work on your terms\nand schedule.',
+  },
+  {
+    icon: 'Wallet',
+    title: 'Earn More',
+    desc: 'More deliveries.\nMore rewards.',
+  },
+  {
+    icon: 'ShieldCheck',
+    title: 'Trusted & Secure',
+    desc: 'Insured shipments.\nReliable support.',
+  },
 ];
 
 const HoverBtn = ({ children, style, onPress, ...props }) => {
@@ -454,7 +481,7 @@ export default function LandingScreen({ onEnterApp, isLoggedIn = false }) {
                   isCompact && { fontSize: 10, letterSpacing: 2, marginBottom: 14 },
                 ]}
               >
-                NIGERIA'S MOST RELIABLE LOGISTICS PARTNER
+                NIGERIA&apos;S MOST RELIABLE LOGISTICS PARTNER
               </Text>
               <Text
                 style={[
@@ -704,6 +731,66 @@ export default function LandingScreen({ onEnterApp, isLoggedIn = false }) {
               </ScrollView>
             </View>
           )}
+        </View>
+
+        {/* 4th Scroll: Deliver & Earn (Rider Opportunity) */}
+        <View style={[styles.riderSection, isCompact && { minHeight: 580 }]}>
+          <Image
+            source={require('../assets/images/4th scroll landing page..png')}
+            style={styles.riderBg}
+            resizeMode="cover"
+          />
+
+
+          <View
+            style={[
+              styles.riderInner,
+              isCompact && { paddingHorizontal: 20, paddingTop: 180, paddingBottom: 36 },
+              isMobile && !isCompact && { paddingHorizontal: 36, paddingTop: 220, paddingBottom: 48 },
+            ]}
+          >
+            <Animated.View entering={FadeInDown.duration(700)} style={[styles.riderCopy, isCompact && { maxWidth: '100%' }]}>
+              <Text style={[styles.riderEyebrow, isCompact && { fontSize: 11, letterSpacing: 2, marginBottom: 10 }]}>DELIVER & EARN</Text>
+              <Text style={[styles.riderTitle, isCompact && { fontSize: 38, lineHeight: 44 }, isMobile && !isCompact && { fontSize: 52, lineHeight: 60 }]}>
+                Your Car.{'\n'}
+                <Text style={styles.riderTitleAccent}>Your Earnings.</Text>
+              </Text>
+              <Text style={[styles.riderSub, isCompact && { fontSize: 15, lineHeight: 23, maxWidth: '100%', marginBottom: 26 }]}>
+                Deliver on your own terms and{isCompact ? ' ' : '\n'}turn every trip into real income.
+              </Text>
+
+              <View style={[styles.riderFeaturesRow, isCompact && { gap: 16 }]}>
+                {RIDER_FEATURES.map((feature) => {
+                  const IconComponent = feature.icon === 'Car'
+                    ? Car
+                    : feature.icon === 'Wallet'
+                    ? Wallet
+                    : ShieldCheck;
+
+                  return (
+                    <View key={feature.title} style={[styles.riderFeatureItem, isCompact && styles.riderFeatureItemCompact]}>
+                      <View style={[styles.riderFeatureIconCircle, isCompact && { width: 36, height: 36, borderRadius: 18, marginBottom: 10 }]}>
+                        <IconComponent color="#ccfd3a" size={isCompact ? 16 : 20} />
+                      </View>
+                      <Text style={[styles.riderFeatureTitle, isCompact && { fontSize: 13, marginBottom: 4 }]}>{feature.title}</Text>
+                      <Text style={[styles.riderFeatureDesc, isCompact && { fontSize: 11, lineHeight: 16 }]}>{feature.desc}</Text>
+                    </View>
+                  );
+                })}
+              </View>
+
+              <HoverBtn
+                style={[
+                  styles.riderCta,
+                  isCompact && { paddingHorizontal: 22, paddingVertical: 14, borderRadius: 12 },
+                ]}
+                onPress={() => onEnterApp('deliver_earn')}
+              >
+                <Text style={[styles.riderCtaText, isCompact && { fontSize: 14 }]}>Deliver & Earn</Text>
+                <ChevronRight color="#002B22" size={isCompact ? 16 : 18} />
+              </HoverBtn>
+            </Animated.View>
+          </View>
         </View>
       </ScrollView>
     </TouchableWithoutFeedback>
@@ -1374,5 +1461,107 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 18,
     color: 'rgba(200,255,220,0.58)',
+  },
+  riderSection: {
+    width: '100%',
+    minHeight: 720,
+    position: 'relative',
+    overflow: 'hidden',
+    backgroundColor: '#010a05',
+  },
+  riderBg: {
+    ...StyleSheet.absoluteFillObject,
+    width: '100%',
+    height: '100%',
+  },
+  riderInner: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    paddingHorizontal: 72,
+    paddingTop: 140,
+    paddingBottom: 56,
+  },
+  riderCopy: {
+    maxWidth: 620,
+  },
+  riderEyebrow: {
+    fontFamily: 'Outfit_7',
+    fontSize: 13,
+    letterSpacing: 3.5,
+    color: '#ccfd3a',
+    textTransform: 'uppercase',
+    marginBottom: 14,
+  },
+  riderTitle: {
+    fontFamily: 'PlusJakartaSans_8',
+    fontSize: 64,
+    lineHeight: 72,
+    color: '#ffffff',
+    marginBottom: 20,
+    textShadowColor: 'rgba(0,0,0,0.5)',
+    textShadowOffset: { width: 0, height: 3 },
+    textShadowRadius: 16,
+  },
+  riderTitleAccent: {
+    color: '#ccfd3a',
+  },
+  riderSub: {
+    fontFamily: 'Outfit_4',
+    fontSize: 18,
+    lineHeight: 28,
+    color: 'rgba(230,255,240,0.82)',
+    marginBottom: 34,
+    maxWidth: 420,
+  },
+  riderFeaturesRow: {
+    flexDirection: 'row',
+    gap: 32,
+    marginBottom: 36,
+  },
+  riderFeatureItem: {
+    minWidth: 130,
+    maxWidth: 160,
+  },
+  riderFeatureItemCompact: {
+    flex: 1,
+    minWidth: 0,
+    maxWidth: 'none',
+  },
+  riderFeatureIconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 1.5,
+    borderColor: 'rgba(204,253,58,0.4)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
+  },
+  riderFeatureTitle: {
+    fontFamily: 'PlusJakartaSans_7',
+    fontSize: 15,
+    color: '#ffffff',
+    marginBottom: 6,
+  },
+  riderFeatureDesc: {
+    fontFamily: 'Outfit_4',
+    fontSize: 13,
+    lineHeight: 19,
+    color: 'rgba(220,255,235,0.7)',
+  },
+  riderCta: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#ccfd3a',
+    paddingHorizontal: 28,
+    paddingVertical: 16,
+    borderRadius: 14,
+  },
+  riderCtaText: {
+    fontFamily: 'Outfit_7',
+    fontSize: 15,
+    color: '#002B22',
   },
 });
