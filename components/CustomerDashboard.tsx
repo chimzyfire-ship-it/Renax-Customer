@@ -575,7 +575,7 @@ export default function CustomerDashboard({ userState = 'Lagos', userName = 'Ade
         tabContent = <CreateAgroShipmentTab customerId={customerId} />;
         break;
       case 'deliver_earn':
-        tabContent = <DeliverAndEarnTab />;
+        tabContent = <DeliverAndEarnTab customerId={customerId} />;
         break;
       case 'history':
         tabContent = <BookingHistoryTab customerId={customerId} onTrackShipment={handleTrackShipment} />;
