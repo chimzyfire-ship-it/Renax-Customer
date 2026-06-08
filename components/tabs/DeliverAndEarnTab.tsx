@@ -61,7 +61,7 @@ const initialForm: DeliverAndEarnApplicationPayload = {
 };
 
 const DEMO_PREVIEW_MESSAGE =
-  'Local testing mode: the Deliver & Earn application is open for this dashboard account. Final submission, online access, and payouts still depend on the current Supabase session and RENAX validation records.';
+  'This tab cannot see an active RENAX login session yet. You do not need a new account; refresh this page or sign back into the same RENAX account if submission does not continue.';
 
 const REVIEW_WORKFLOW = [
   'Application submitted',
@@ -140,7 +140,7 @@ export default function DeliverAndEarnTab({ customerId }: DeliverAndEarnTabProps
     } catch (error) {
       console.error('Failed to load Deliver & Earn data', error);
       setSnapshot(createDeliverAndEarnPreviewSnapshot(customerId));
-      setMessage('Deliver & Earn records could not be loaded yet, so the application is open in local testing mode.');
+      setMessage('Deliver & Earn could not confirm the active login session in this tab. Refresh the page or sign back into the same account.');
     } finally {
       setLoading(false);
     }
@@ -195,8 +195,8 @@ export default function DeliverAndEarnTab({ customerId }: DeliverAndEarnTabProps
       setActionFeedback({
         tone: 'warning',
         text: submit
-          ? 'This dashboard is in preview mode. Sign in again with a real RENAX account, then submit your car for validation.'
-          : 'Preview draft is kept on this screen. Sign in with a real RENAX account to save it to RENAX validation records.',
+          ? 'This tab cannot see your active RENAX login session. You do not need to create another account; refresh this page or sign out and sign back into this same account, then submit again.'
+          : 'This tab cannot save to RENAX yet because the active login session is not visible here. Refresh or sign back into this same account.',
       });
       return;
     }
