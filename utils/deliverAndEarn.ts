@@ -136,6 +136,15 @@ export type DeliverAndEarnApplicationPayload = {
   submit: boolean;
 };
 
+export type DeliverAndEarnApplicationResult = {
+  profile_id?: string;
+  application_status?: string;
+  operator_status?: string;
+  vehicle_id?: string | null;
+  vehicle_status?: string | null;
+  next_steps?: string[];
+};
+
 const EMPTY_SNAPSHOT: DeliverAndEarnSnapshot = {
   userId: null,
   isDemoPreview: false,
@@ -230,29 +239,34 @@ export async function fetchDeliverAndEarnSnapshot(previewUserId?: string | null)
 }
 
 export async function submitDeliverAndEarnApplication(payload: DeliverAndEarnApplicationPayload) {
+  const userId = await getCurrentDeliverAndEarnUserId();
+  if (!userId) {
+    throw new Error('Your RENAX login session is not active. Please sign out, sign in again, and submit your Deliver & Earn application.');
+  }
+
   const { data, error } = await supabase.rpc('submit_deliver_and_earn_application', {
     p_payload: {
-      full_name: payload.fullName,
-      phone_number: payload.phoneNumber,
-      operating_state: payload.operatingState,
-      operating_city: payload.operatingCity,
+      full_name: payload.fullName.trim(),
+      phone_number: payload.phoneNumber.trim(),
+      operating_state: payload.operatingState.trim(),
+      operating_city: payload.operatingCity.trim(),
       submit: payload.submit,
       vehicle: {
         vehicle_type: payload.vehicleType,
-        make: payload.make,
-        model: payload.model,
-        vehicle_year: payload.vehicleYear,
-        color: payload.color,
-        plate_number: payload.plateNumber,
-        ownership_type: payload.ownershipType,
-        capacity_kg: payload.capacityKg,
+        make: payload.make.trim(),
+        model: payload.model.trim(),
+        vehicle_year: payload.vehicleYear.trim(),
+        color: payload.color.trim(),
+        plate_number: payload.plateNumber.trim().toUpperCase(),
+        ownership_type: payload.ownershipType.trim().toLowerCase().replace(/\s+/g, '_'),
+        capacity_kg: payload.capacityKg.trim(),
         max_parcel_count: '8',
       },
     },
   });
 
   if (error) throw error;
-  return data as { profile_id?: string; application_status?: string; vehicle_id?: string | null };
+  return data as DeliverAndEarnApplicationResult;
 }
 
 export async function setDeliverAndEarnOnline(isOnline: boolean, vehicleId?: string | null) {
