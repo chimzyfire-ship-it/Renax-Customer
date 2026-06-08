@@ -63,9 +63,50 @@ const initialForm: DeliverAndEarnApplicationPayload = {
 const DEMO_PREVIEW_MESSAGE =
   'Local testing mode: the Deliver & Earn application is open for this dashboard account. Final submission, online access, and payouts still depend on the current Supabase session and RENAX validation records.';
 
+const REVIEW_WORKFLOW = [
+  'Application submitted',
+  'Identity, licence, and contact review',
+  'Vehicle, insurance, and roadworthiness validation',
+  'Payout readiness check',
+  'Approval unlocks online dispatch',
+];
+
 type DeliverAndEarnTabProps = {
   customerId?: string | null;
 };
+
+type ActionFeedback = {
+  tone: 'success' | 'warning' | 'error';
+  text: string;
+  nextSteps?: string[];
+};
+
+const clean = (value: string) => value.trim();
+
+function validateApplicationForm(form: DeliverAndEarnApplicationPayload, submit: boolean) {
+  if (!submit) return '';
+
+  if (!clean(form.fullName)) return 'Enter your legal full name before submitting for review.';
+  if (!clean(form.phoneNumber)) return 'Enter a reachable phone number before submitting for review.';
+  if (!clean(form.operatingState)) return 'Choose the Nigerian state where this car will operate.';
+  if (!clean(form.operatingCity)) return 'Enter the city where this car will operate.';
+  if (!clean(form.make)) return 'Enter the vehicle make before submitting for review.';
+  if (!clean(form.model)) return 'Enter the vehicle model before submitting for review.';
+  if (!clean(form.plateNumber)) return 'Enter the plate number before submitting for review.';
+
+  const year = Number(clean(form.vehicleYear));
+  const currentYear = new Date().getFullYear();
+  if (!Number.isInteger(year) || year < 1990 || year > currentYear + 1) {
+    return `Enter a valid vehicle year between 1990 and ${currentYear + 1}.`;
+  }
+
+  const capacity = Number(clean(form.capacityKg));
+  if (!Number.isFinite(capacity) || capacity <= 0 || capacity > 1000) {
+    return 'Enter a realistic vehicle capacity in KG.';
+  }
+
+  return '';
+}
 
 function statusLabel(value?: string | null) {
   if (!value) return 'Not started';
@@ -87,6 +128,7 @@ export default function DeliverAndEarnTab({ customerId }: DeliverAndEarnTabProps
   const [saving, setSaving] = useState(false);
   const [busyAction, setBusyAction] = useState('');
   const [message, setMessage] = useState('');
+  const [actionFeedback, setActionFeedback] = useState<ActionFeedback | null>(null);
   const [form, setForm] = useState(initialForm);
 
   const loadSnapshot = useCallback(async () => {
@@ -138,27 +180,50 @@ export default function DeliverAndEarnTab({ customerId }: DeliverAndEarnTabProps
   const isDemoPreview = Boolean(snapshot?.isDemoPreview);
 
   const updateField = (key: keyof DeliverAndEarnApplicationPayload, value: string) => {
+    setActionFeedback(null);
     setForm((current) => ({ ...current, [key]: value }));
   };
 
   const handleSubmit = async (submit: boolean) => {
-    if (isDemoPreview) {
-      setMessage(
-        submit
-          ? 'This is local preview access. Sign in with a real RENAX account to submit your car for validation.'
-          : 'Preview draft is kept on this screen. Sign in with a real RENAX account to save it to RENAX validation records.',
-      );
+    const validationError = validateApplicationForm(form, submit);
+    if (validationError) {
+      setActionFeedback({ tone: 'error', text: validationError });
       return;
     }
+
+    if (isDemoPreview) {
+      setActionFeedback({
+        tone: 'warning',
+        text: submit
+          ? 'This dashboard is in preview mode. Sign in again with a real RENAX account, then submit your car for validation.'
+          : 'Preview draft is kept on this screen. Sign in with a real RENAX account to save it to RENAX validation records.',
+      });
+      return;
+    }
+
     setSaving(true);
     setMessage('');
+    setActionFeedback({
+      tone: 'warning',
+      text: submit ? 'Submitting your Deliver & Earn application to RENAX review...' : 'Saving your Deliver & Earn draft...',
+    });
+
     try {
-      await submitDeliverAndEarnApplication({ ...form, submit });
-      setMessage(submit ? 'Deliver & Earn application submitted for RENAX review.' : 'Draft saved.');
+      const result = await submitDeliverAndEarnApplication({ ...form, submit });
+      setActionFeedback({
+        tone: 'success',
+        text: submit
+          ? `Application submitted. Status: ${statusLabel(result.application_status)}. Vehicle: ${statusLabel(result.vehicle_status)}.`
+          : 'Draft saved. You can return and submit it for review when the car details are complete.',
+        nextSteps: submit ? result.next_steps || REVIEW_WORKFLOW.slice(1) : undefined,
+      });
       await loadSnapshot();
     } catch (error) {
       console.error('Deliver & Earn application failed', error);
-      setMessage(error instanceof Error ? error.message : 'Could not save Deliver & Earn application.');
+      setActionFeedback({
+        tone: 'error',
+        text: error instanceof Error ? error.message : 'Could not save Deliver & Earn application.',
+      });
     } finally {
       setSaving(false);
     }
@@ -217,6 +282,16 @@ export default function DeliverAndEarnTab({ customerId }: DeliverAndEarnTabProps
     { label: 'Paid', value: formatAmount(money.paid), icon: Banknote, color: '#004d3d' },
     { label: 'Completed', value: String(profile?.total_completed_shipments ?? 0), icon: CheckCircle2, color: '#2563EB' },
   ];
+  const actionNoticeStyle = actionFeedback?.tone === 'success'
+    ? styles.successNotice
+    : actionFeedback?.tone === 'error'
+      ? styles.errorNotice
+      : styles.warningNotice;
+  const actionNoticeTextStyle = actionFeedback?.tone === 'success'
+    ? styles.successNoticeText
+    : actionFeedback?.tone === 'error'
+      ? styles.errorNoticeText
+      : styles.warningNoticeText;
 
   return (
     <ScrollView style={styles.root} contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
@@ -272,6 +347,23 @@ export default function DeliverAndEarnTab({ customerId }: DeliverAndEarnTabProps
           <Text style={styles.panelText}>
             {primaryVehicle ? `${primaryVehicle.plate_number} ${primaryVehicle.make || ''} ${primaryVehicle.model || ''}` : 'Add your car details below.'}
           </Text>
+        </View>
+      </View>
+
+      <View style={styles.workflowPanel}>
+        <View style={styles.workflowHeader}>
+          <ShieldCheck size={18} color="#004d3d" />
+          <Text style={styles.workflowTitle}>Registration Workflow</Text>
+        </View>
+        <View style={[styles.workflowSteps, isCompact && styles.stack]}>
+          {REVIEW_WORKFLOW.map((step, index) => (
+            <View key={step} style={styles.workflowStep}>
+              <View style={[styles.workflowBadge, index === 0 && styles.workflowBadgeActive]}>
+                <Text style={[styles.workflowBadgeText, index === 0 && styles.workflowBadgeTextActive]}>{index + 1}</Text>
+              </View>
+              <Text style={styles.workflowStepText}>{step}</Text>
+            </View>
+          ))}
         </View>
       </View>
 
@@ -390,11 +482,32 @@ export default function DeliverAndEarnTab({ customerId }: DeliverAndEarnTabProps
             <Pressable style={styles.saveBtn} onPress={() => handleSubmit(false)} disabled={saving}>
               <Text style={styles.saveBtnText}>{saving ? 'Saving...' : 'Save Draft'}</Text>
             </Pressable>
-            <Pressable style={styles.submitBtn} onPress={() => handleSubmit(true)} disabled={saving}>
-              <ShieldCheck size={17} color="#002B22" />
+            <Pressable style={[styles.submitBtn, saving && styles.disabledBtn]} onPress={() => handleSubmit(true)} disabled={saving}>
+              {saving ? <ActivityIndicator color="#002B22" size="small" /> : <ShieldCheck size={17} color="#002B22" />}
               <Text style={styles.submitBtnText}>{saving ? 'Submitting...' : 'Submit For Review'}</Text>
             </Pressable>
           </View>
+          {actionFeedback ? (
+            <View style={[styles.actionNotice, actionNoticeStyle]}>
+              {actionFeedback.tone === 'success' ? (
+                <CheckCircle2 size={17} color="#047857" />
+              ) : actionFeedback.tone === 'error' ? (
+                <AlertCircle size={17} color="#DC2626" />
+              ) : (
+                <Clock size={17} color="#B45309" />
+              )}
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={[styles.actionNoticeText, actionNoticeTextStyle]}>{actionFeedback.text}</Text>
+                {actionFeedback.nextSteps?.length ? (
+                  <View style={styles.nextStepsList}>
+                    {actionFeedback.nextSteps.map((step) => (
+                      <Text key={step} style={styles.nextStepText}>• {step}</Text>
+                    ))}
+                  </View>
+                ) : null}
+              </View>
+            </View>
+          ) : null}
         </View>
       </View>
     </ScrollView>
@@ -448,6 +561,16 @@ const styles = StyleSheet.create({
   panelEyebrow: { fontFamily: 'Outfit_6', fontSize: 11, color: '#6B7280', textTransform: 'uppercase', letterSpacing: 0.5 },
   statusValue: { fontFamily: 'PlusJakartaSans_7', fontSize: 22 },
   panelText: { fontFamily: 'Outfit_4', fontSize: 13, color: '#6B7280', lineHeight: 20 },
+  workflowPanel: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#D1FAE5', borderRadius: 8, padding: 16, gap: 12 },
+  workflowHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  workflowTitle: { fontFamily: 'PlusJakartaSans_7', fontSize: 16, color: '#111827' },
+  workflowSteps: { flexDirection: 'row', gap: 10 },
+  workflowStep: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  workflowBadge: { width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: '#E5E7EB' },
+  workflowBadgeActive: { backgroundColor: '#ccfd3a' },
+  workflowBadgeText: { fontFamily: 'Outfit_7', fontSize: 11, color: '#4B5563' },
+  workflowBadgeTextActive: { color: '#002B22' },
+  workflowStepText: { flex: 1, fontFamily: 'Outfit_6', fontSize: 12, color: '#374151', lineHeight: 17 },
   statsRow: { flexDirection: 'row', gap: 14, marginTop: 16 },
   statCard: { flex: 1, minHeight: 92, flexDirection: 'row', justifyContent: 'space-between', backgroundColor: '#fff', borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 8, padding: 18 },
   statLabel: { fontFamily: 'Outfit_6', fontSize: 12, color: '#6B7280' },
@@ -480,4 +603,14 @@ const styles = StyleSheet.create({
   saveBtnText: { fontFamily: 'Outfit_7', color: '#374151', fontSize: 14 },
   submitBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#ccfd3a', borderRadius: 8, paddingHorizontal: 16, paddingVertical: 13 },
   submitBtnText: { fontFamily: 'Outfit_7', color: '#002B22', fontSize: 14 },
+  actionNotice: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, borderWidth: 1, borderRadius: 8, padding: 12, marginTop: 2 },
+  warningNotice: { backgroundColor: '#FFFBEB', borderColor: '#FCD34D' },
+  successNotice: { backgroundColor: '#ECFDF5', borderColor: '#A7F3D0' },
+  errorNotice: { backgroundColor: '#FEF2F2', borderColor: '#FECACA' },
+  actionNoticeText: { fontFamily: 'Outfit_6', fontSize: 13, lineHeight: 19 },
+  warningNoticeText: { color: '#92400E' },
+  successNoticeText: { color: '#047857' },
+  errorNoticeText: { color: '#DC2626' },
+  nextStepsList: { marginTop: 8, gap: 4 },
+  nextStepText: { fontFamily: 'Outfit_4', fontSize: 12, color: '#374151', lineHeight: 18 },
 });
