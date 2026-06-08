@@ -156,13 +156,21 @@ const EMPTY_SNAPSHOT: DeliverAndEarnSnapshot = {
   payouts: [],
 };
 
-const LOCAL_DELIVER_AND_EARN_PREVIEW_ID = 'local-deliver-and-earn-preview';
+export const LOCAL_DELIVER_AND_EARN_PREVIEW_ID = 'local-deliver-and-earn-preview';
 
 export function createDeliverAndEarnPreviewSnapshot(userId?: string | null): DeliverAndEarnSnapshot {
   return {
     ...EMPTY_SNAPSHOT,
     userId: userId || LOCAL_DELIVER_AND_EARN_PREVIEW_ID,
     isDemoPreview: true,
+  };
+}
+
+export function createDeliverAndEarnSignedInSnapshot(userId: string): DeliverAndEarnSnapshot {
+  return {
+    ...EMPTY_SNAPSHOT,
+    userId,
+    isDemoPreview: false,
   };
 }
 
@@ -219,22 +227,28 @@ export async function fetchDeliverAndEarnSnapshot(previewUserId?: string | null)
       .limit(10),
   ]);
 
-  if (profileResult.error) throw profileResult.error;
-  if (vehiclesResult.error) throw vehiclesResult.error;
-  if (availabilityResult.error) throw availabilityResult.error;
-  if (offersResult.error) throw offersResult.error;
-  if (earningsResult.error) throw earningsResult.error;
-  if (payoutsResult.error) throw payoutsResult.error;
+  const queryErrors = [
+    profileResult.error,
+    vehiclesResult.error,
+    availabilityResult.error,
+    offersResult.error,
+    earningsResult.error,
+    payoutsResult.error,
+  ].filter(Boolean);
+
+  if (queryErrors.length) {
+    console.warn('Deliver & Earn snapshot loaded with partial data', queryErrors);
+  }
 
   return {
     userId,
     isDemoPreview: false,
-    profile: (profileResult.data as DeliverAndEarnProfile | null) ?? null,
-    vehicles: (vehiclesResult.data as DeliverAndEarnVehicle[] | null) ?? [],
-    availability: (availabilityResult.data as DeliverAndEarnAvailability | null) ?? null,
-    offers: (offersResult.data as DeliverAndEarnOffer[] | null) ?? [],
-    earnings: (earningsResult.data as DeliverAndEarnEarning[] | null) ?? [],
-    payouts: (payoutsResult.data as DeliverAndEarnPayout[] | null) ?? [],
+    profile: profileResult.error ? null : (profileResult.data as DeliverAndEarnProfile | null) ?? null,
+    vehicles: vehiclesResult.error ? [] : (vehiclesResult.data as DeliverAndEarnVehicle[] | null) ?? [],
+    availability: availabilityResult.error ? null : (availabilityResult.data as DeliverAndEarnAvailability | null) ?? null,
+    offers: offersResult.error ? [] : (offersResult.data as DeliverAndEarnOffer[] | null) ?? [],
+    earnings: earningsResult.error ? [] : (earningsResult.data as DeliverAndEarnEarning[] | null) ?? [],
+    payouts: payoutsResult.error ? [] : (payoutsResult.data as DeliverAndEarnPayout[] | null) ?? [],
   };
 }
 
