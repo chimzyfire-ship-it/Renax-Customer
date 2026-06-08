@@ -109,6 +109,15 @@ export type DeliverAndEarnPayout = {
   paid_at: string | null;
 };
 
+export type DeliverAndEarnWalletSummary = {
+  available_balance: number;
+  pending_balance: number;
+  payout_requested_balance: number;
+  paid_balance: number;
+  held_balance: number;
+  total_balance: number;
+};
+
 export type DeliverAndEarnSnapshot = {
   userId: string | null;
   isDemoPreview: boolean;
@@ -118,6 +127,7 @@ export type DeliverAndEarnSnapshot = {
   offers: DeliverAndEarnOffer[];
   earnings: DeliverAndEarnEarning[];
   payouts: DeliverAndEarnPayout[];
+  walletSummary: DeliverAndEarnWalletSummary | null;
 };
 
 export type DeliverAndEarnApplicationPayload = {
@@ -154,6 +164,7 @@ const EMPTY_SNAPSHOT: DeliverAndEarnSnapshot = {
   offers: [],
   earnings: [],
   payouts: [],
+  walletSummary: null,
 };
 
 export const LOCAL_DELIVER_AND_EARN_PREVIEW_ID = 'local-deliver-and-earn-preview';
@@ -184,71 +195,100 @@ export async function getCurrentDeliverAndEarnUserId() {
   return user?.id ?? session.user.id;
 }
 
+const SNAPSHOT_QUERY_TIMEOUT_MS = 6000;
+
+async function safeSnapshotQuery<T>(label: string, queryFn: () => PromiseLike<{ data: T | null; error: any }>): Promise<T | null> {
+  try {
+    const timeoutResult = new Promise<{ data: T | null; error: any }>((resolve) => {
+      setTimeout(() => {
+        resolve({
+          data: null,
+          error: new Error(`${label} query timed out after ${SNAPSHOT_QUERY_TIMEOUT_MS / 1000} seconds`),
+        });
+      }, SNAPSHOT_QUERY_TIMEOUT_MS);
+    });
+
+    const { data, error } = await Promise.race([queryFn(), timeoutResult]);
+    if (error) {
+      console.warn(`[DeliverAndEarn] ${label} query error:`, error.message || error);
+      return null;
+    }
+    return data;
+  } catch (error) {
+    console.warn(`[DeliverAndEarn] ${label} query threw:`, error);
+    return null;
+  }
+}
+
 export async function fetchDeliverAndEarnSnapshot(previewUserId?: string | null): Promise<DeliverAndEarnSnapshot> {
   const userId = await getCurrentDeliverAndEarnUserId();
   if (!userId) {
     return createDeliverAndEarnPreviewSnapshot(previewUserId);
   }
 
-  const [profileResult, vehiclesResult, availabilityResult, offersResult, earningsResult, payoutsResult] = await Promise.all([
-    supabase
+  const [profile, vehicles, availability, offers, earnings, payouts, walletSummary] = await Promise.all([
+    safeSnapshotQuery<DeliverAndEarnProfile>('profile', () =>
+      supabase
       .from('deliver_and_earn_profiles')
       .select('*')
       .eq('profile_id', userId)
-      .maybeSingle(),
-    supabase
+      .maybeSingle()
+    ),
+    safeSnapshotQuery<DeliverAndEarnVehicle[]>('vehicles', () =>
+      supabase
       .from('deliver_and_earn_vehicles')
       .select('*')
       .eq('operator_id', userId)
-      .order('updated_at', { ascending: false }),
-    supabase
+      .order('updated_at', { ascending: false })
+      .limit(5)
+    ),
+    safeSnapshotQuery<DeliverAndEarnAvailability>('availability', () =>
+      supabase
       .from('deliver_and_earn_availability')
       .select('*')
       .eq('operator_id', userId)
-      .maybeSingle(),
-    supabase
+      .maybeSingle()
+    ),
+    safeSnapshotQuery<DeliverAndEarnOffer[]>('offers', () =>
+      supabase
       .from('deliver_and_earn_job_offers')
       .select('*, shipments(tracking_id, pickup_address, delivery_address, package_category, estimated_price, carrier_commission_amount)')
       .eq('operator_id', userId)
       .in('offer_status', ['offered', 'accepted'])
       .order('created_at', { ascending: false })
-      .limit(10),
-    supabase
+      .limit(10)
+    ),
+    safeSnapshotQuery<DeliverAndEarnEarning[]>('earnings', () =>
+      supabase
       .from('deliver_and_earn_earnings_ledger')
       .select('*')
       .eq('operator_id', userId)
       .order('created_at', { ascending: false })
-      .limit(25),
-    supabase
+      .limit(25)
+    ),
+    safeSnapshotQuery<DeliverAndEarnPayout[]>('payouts', () =>
+      supabase
       .from('deliver_and_earn_payouts')
       .select('*')
       .eq('operator_id', userId)
       .order('created_at', { ascending: false })
-      .limit(10),
+      .limit(10)
+    ),
+    safeSnapshotQuery<DeliverAndEarnWalletSummary>('wallet_summary', () =>
+      supabase.rpc('deliver_and_earn_wallet_summary', { p_operator_id: userId }).maybeSingle()
+    ),
   ]);
-
-  const queryErrors = [
-    profileResult.error,
-    vehiclesResult.error,
-    availabilityResult.error,
-    offersResult.error,
-    earningsResult.error,
-    payoutsResult.error,
-  ].filter(Boolean);
-
-  if (queryErrors.length) {
-    console.warn('Deliver & Earn snapshot loaded with partial data', queryErrors);
-  }
 
   return {
     userId,
     isDemoPreview: false,
-    profile: profileResult.error ? null : (profileResult.data as DeliverAndEarnProfile | null) ?? null,
-    vehicles: vehiclesResult.error ? [] : (vehiclesResult.data as DeliverAndEarnVehicle[] | null) ?? [],
-    availability: availabilityResult.error ? null : (availabilityResult.data as DeliverAndEarnAvailability | null) ?? null,
-    offers: offersResult.error ? [] : (offersResult.data as DeliverAndEarnOffer[] | null) ?? [],
-    earnings: earningsResult.error ? [] : (earningsResult.data as DeliverAndEarnEarning[] | null) ?? [],
-    payouts: payoutsResult.error ? [] : (payoutsResult.data as DeliverAndEarnPayout[] | null) ?? [],
+    profile: profile ?? null,
+    vehicles: vehicles ?? [],
+    availability: availability ?? null,
+    offers: offers ?? [],
+    earnings: earnings ?? [],
+    payouts: payouts ?? [],
+    walletSummary: walletSummary ?? null,
   };
 }
 
@@ -307,12 +347,22 @@ export async function requestDeliverAndEarnPayout(amount?: number) {
   return data as string;
 }
 
-export function summarizeDeliverAndEarnMoney(earnings: DeliverAndEarnEarning[]) {
+export function summarizeDeliverAndEarnMoney(earnings: DeliverAndEarnEarning[], walletSummary?: DeliverAndEarnWalletSummary | null) {
+  if (walletSummary) {
+    return {
+      available: Number(walletSummary.available_balance || 0),
+      pending: Number(walletSummary.pending_balance || 0) + Number(walletSummary.payout_requested_balance || 0),
+      paid: Number(walletSummary.paid_balance || 0),
+      held: Number(walletSummary.held_balance || 0),
+      total: Number(walletSummary.total_balance || 0),
+    };
+  }
+
   return earnings.reduce(
     (summary, earning) => {
       const amount = Number(earning.operator_amount || 0);
       if (earning.status === 'available') summary.available += amount;
-      if (earning.status === 'pending_delivery' || earning.status === 'pending_dispute_window') summary.pending += amount;
+      if (earning.status === 'pending_delivery' || earning.status === 'pending_dispute_window' || earning.status === 'payout_requested') summary.pending += amount;
       if (earning.status === 'paid') summary.paid += amount;
       if (earning.status === 'held') summary.held += amount;
       summary.total += amount;

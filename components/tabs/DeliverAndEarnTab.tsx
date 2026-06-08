@@ -120,6 +120,8 @@ function statusColor(value?: string | null) {
   return '#4B5563';
 }
 
+const SNAPSHOT_LOAD_TIMEOUT_MS = 10000;
+
 export default function DeliverAndEarnTab({ customerId }: DeliverAndEarnTabProps) {
   const { width } = useWindowDimensions();
   const isCompact = width < 760;
@@ -134,12 +136,17 @@ export default function DeliverAndEarnTab({ customerId }: DeliverAndEarnTabProps
   const loadSnapshot = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await fetchDeliverAndEarnSnapshot(customerId);
+      const data = await Promise.race([
+        fetchDeliverAndEarnSnapshot(customerId),
+        new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error('Deliver & Earn data load timed out. Refresh this tab or sign in again if the session is stale.')), SNAPSHOT_LOAD_TIMEOUT_MS);
+        }),
+      ]);
       setSnapshot(data);
       setMessage('');
     } catch (error) {
       console.error('Failed to load Deliver & Earn data', error);
-      setSnapshot(createDeliverAndEarnPreviewSnapshot(customerId));
+      setSnapshot((current) => current || createDeliverAndEarnPreviewSnapshot(customerId));
       setMessage('Deliver & Earn could not confirm the active login session in this tab. Refresh the page or sign back into the same account.');
     } finally {
       setLoading(false);
@@ -169,8 +176,8 @@ export default function DeliverAndEarnTab({ customerId }: DeliverAndEarnTabProps
   }, [snapshot?.profile, snapshot?.vehicles]);
 
   const money = useMemo(
-    () => summarizeDeliverAndEarnMoney(snapshot?.earnings ?? []),
-    [snapshot?.earnings],
+    () => summarizeDeliverAndEarnMoney(snapshot?.earnings ?? [], snapshot?.walletSummary),
+    [snapshot?.earnings, snapshot?.walletSummary],
   );
 
   const profile = snapshot?.profile ?? null;
@@ -267,7 +274,7 @@ export default function DeliverAndEarnTab({ customerId }: DeliverAndEarnTabProps
     }
   };
 
-  if (loading) {
+  if (loading && !snapshot) {
     return (
       <View style={styles.centerState}>
         <ActivityIndicator color="#004d3d" size="large" />
@@ -317,6 +324,13 @@ export default function DeliverAndEarnTab({ customerId }: DeliverAndEarnTabProps
         <View style={styles.notice}>
           <AlertCircle size={16} color="#92400E" />
           <Text style={styles.noticeText}>{message}</Text>
+        </View>
+      ) : null}
+
+      {loading ? (
+        <View style={styles.refreshingPill}>
+          <ActivityIndicator color="#004d3d" size="small" />
+          <Text style={styles.refreshingText}>Refreshing Deliver & Earn...</Text>
         </View>
       ) : null}
 
@@ -555,6 +569,8 @@ const styles = StyleSheet.create({
   previewNoticeText: { fontFamily: 'Outfit_4', fontSize: 13, color: '#004d3d', flex: 1, lineHeight: 19 },
   notice: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#FEF3C7', borderWidth: 1, borderColor: '#FCD34D', borderRadius: 8, padding: 12 },
   noticeText: { fontFamily: 'Outfit_4', fontSize: 13, color: '#92400E', flex: 1 },
+  refreshingPill: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#ECFDF5', borderWidth: 1, borderColor: '#A7F3D0', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8 },
+  refreshingText: { fontFamily: 'Outfit_7', color: '#047857', fontSize: 12 },
   stack: { flexDirection: 'column' },
   statusGrid: { flexDirection: 'row', gap: 14 },
   statusPanel: { flex: 1, backgroundColor: '#fff', borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 8, padding: 18, gap: 6 },
