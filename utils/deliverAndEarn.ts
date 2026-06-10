@@ -226,7 +226,7 @@ export async function fetchDeliverAndEarnSnapshot(previewUserId?: string | null)
     return createDeliverAndEarnPreviewSnapshot(previewUserId);
   }
 
-  const [profile, vehicles, availability, offers, earnings, payouts, walletSummary] = await Promise.all([
+  const [profile, vehicles] = await Promise.all([
     safeSnapshotQuery<DeliverAndEarnProfile>('profile', () =>
       supabase
       .from('deliver_and_earn_profiles')
@@ -242,41 +242,6 @@ export async function fetchDeliverAndEarnSnapshot(previewUserId?: string | null)
       .order('updated_at', { ascending: false })
       .limit(5)
     ),
-    safeSnapshotQuery<DeliverAndEarnAvailability>('availability', () =>
-      supabase
-      .from('deliver_and_earn_availability')
-      .select('*')
-      .eq('operator_id', userId)
-      .maybeSingle()
-    ),
-    safeSnapshotQuery<DeliverAndEarnOffer[]>('offers', () =>
-      supabase
-      .from('deliver_and_earn_job_offers')
-      .select('*, shipments(tracking_id, pickup_address, delivery_address, package_category, estimated_price, carrier_commission_amount)')
-      .eq('operator_id', userId)
-      .in('offer_status', ['offered', 'accepted'])
-      .order('created_at', { ascending: false })
-      .limit(10)
-    ),
-    safeSnapshotQuery<DeliverAndEarnEarning[]>('earnings', () =>
-      supabase
-      .from('deliver_and_earn_earnings_ledger')
-      .select('*')
-      .eq('operator_id', userId)
-      .order('created_at', { ascending: false })
-      .limit(25)
-    ),
-    safeSnapshotQuery<DeliverAndEarnPayout[]>('payouts', () =>
-      supabase
-      .from('deliver_and_earn_payouts')
-      .select('*')
-      .eq('operator_id', userId)
-      .order('created_at', { ascending: false })
-      .limit(10)
-    ),
-    safeSnapshotQuery<DeliverAndEarnWalletSummary>('wallet_summary', () =>
-      supabase.rpc('deliver_and_earn_wallet_summary', { p_operator_id: userId }).maybeSingle()
-    ),
   ]);
 
   return {
@@ -284,11 +249,11 @@ export async function fetchDeliverAndEarnSnapshot(previewUserId?: string | null)
     isDemoPreview: false,
     profile: profile ?? null,
     vehicles: vehicles ?? [],
-    availability: availability ?? null,
-    offers: offers ?? [],
-    earnings: earnings ?? [],
-    payouts: payouts ?? [],
-    walletSummary: walletSummary ?? null,
+    availability: null,
+    offers: [],
+    earnings: [],
+    payouts: [],
+    walletSummary: null,
   };
 }
 
