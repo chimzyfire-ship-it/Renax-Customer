@@ -56,6 +56,8 @@ const PAYMENT_METHODS = [
   'Pay on Delivery',
 ];
 
+const LOCAL_CARRIER_SEARCH_SECONDS = 90;
+
 const RELAY_PICKUP_OPTIONS = [
   {
     id: 'customer_dropoff',
@@ -203,7 +205,7 @@ async function waitForLocalRiderAcceptance(shipmentId: string, timeoutMs = 90000
 
 async function requestDeliverAndEarnCarrierMatch(shipmentId: string) {
   const { data, error } = await supabase.rpc('request_customer_deliver_and_earn_match', {
-    p_payload: { shipment_id: shipmentId },
+    p_payload: { shipment_id: shipmentId, window_seconds: LOCAL_CARRIER_SEARCH_SECONDS },
   });
 
   if (error) {
@@ -217,6 +219,46 @@ async function requestDeliverAndEarnCarrierMatch(shipmentId: string) {
     offersCreated: Number(result.offers_created || 0),
     alreadyAssigned: Boolean(result.already_assigned),
   };
+}
+
+async function openLocalCarrierSearch(shipmentId: string) {
+  const { data, error } = await supabase.rpc('open_local_carrier_search', {
+    p_payload: {
+      shipment_id: shipmentId,
+      window_seconds: LOCAL_CARRIER_SEARCH_SECONDS,
+      source: 'customer_create_shipment_tab',
+    },
+  });
+
+  if (!error) {
+    const result = (data || {}) as { offers_created?: number; already_assigned?: boolean; expires_at?: string };
+    return {
+      available: true,
+      offersCreated: Number(result.offers_created || 0),
+      alreadyAssigned: Boolean(result.already_assigned),
+      expiresAt: result.expires_at || null,
+    };
+  }
+
+  const message = error.message || '';
+  const rpcMissing =
+    message.includes('open_local_carrier_search') &&
+    (message.includes('schema cache') || message.includes('Could not find the function'));
+
+  if (!rpcMissing) {
+    throw new Error(message || 'Could not open the live carrier search.');
+  }
+
+  await supabase
+    .from('shipments')
+    .update({
+      status: 'pending',
+      dispatch_stage: 'awaiting_rider_acceptance',
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', shipmentId);
+
+  return requestDeliverAndEarnCarrierMatch(shipmentId);
 }
 
 async function createCustomerShipmentCheckout(payload: Record<string, unknown>) {
@@ -420,7 +462,7 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
   // Rider search state
   const [searchingRiders, setSearchingRiders] = useState(false);
   const [noRidersFound, setNoRidersFound] = useState(false);
-  const [matchCountdown, setMatchCountdown] = useState(90);
+  const [matchCountdown, setMatchCountdown] = useState(LOCAL_CARRIER_SEARCH_SECONDS);
   const [pendingLocalMatch, setPendingLocalMatch] = useState<PendingLocalMatch | null>(null);
 
   // Pickers visibility
@@ -433,7 +475,7 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
 
   React.useEffect(() => {
     if (!searchingRiders) return;
-    setMatchCountdown(90);
+    setMatchCountdown(LOCAL_CARRIER_SEARCH_SECONDS);
     const timer = setInterval(() => {
       setMatchCountdown((value) => (value > 0 ? value - 1 : 0));
     }, 1000);
@@ -458,37 +500,18 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
     setSearchingRiders(true);
     setLoading(true);
 
-    await supabase
-      .from('shipments')
-      .update({
-        status: 'pending',
-        dispatch_stage: 'awaiting_rider_acceptance',
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', pendingLocalMatch.shipmentId);
+    const searchResult = await openLocalCarrierSearch(pendingLocalMatch.shipmentId);
+
+    if (searchResult.alreadyAssigned) {
+      showMatchedShipmentReceipt(pendingLocalMatch);
+      setSearchingRiders(false);
+      setLoading(false);
+      return;
+    }
 
     const acceptance = await waitForLocalRiderAcceptance(pendingLocalMatch.shipmentId);
 
     if (!acceptance.matched) {
-      const deliverAndEarnMatch = await requestDeliverAndEarnCarrierMatch(pendingLocalMatch.shipmentId);
-
-      if (deliverAndEarnMatch.alreadyAssigned) {
-        showMatchedShipmentReceipt(pendingLocalMatch);
-        setSearchingRiders(false);
-        setLoading(false);
-        return;
-      }
-
-      if (deliverAndEarnMatch.available && deliverAndEarnMatch.offersCreated > 0) {
-        const secondAcceptance = await waitForLocalRiderAcceptance(pendingLocalMatch.shipmentId, 90000);
-        if (secondAcceptance.matched) {
-          showMatchedShipmentReceipt(pendingLocalMatch);
-          setSearchingRiders(false);
-          setLoading(false);
-          return;
-        }
-      }
-
       setNoRidersFound(true);
       setFormError(assignmentUiCopy.noMatchError);
       setSearchingRiders(false);
@@ -690,31 +713,20 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
         setSearchingRiders(true);
         setNoRidersFound(false);
 
+        const searchResult = await openLocalCarrierSearch(createdShipment.shipment_id);
+
+        if (searchResult.alreadyAssigned) {
+          setSearchingRiders(false);
+        }
+
         const acceptance = await waitForLocalRiderAcceptance(createdShipment.shipment_id);
 
         if (!acceptance.matched) {
-          const deliverAndEarnMatch = await requestDeliverAndEarnCarrierMatch(createdShipment.shipment_id);
-
-          if (deliverAndEarnMatch.alreadyAssigned) {
-            setSearchingRiders(false);
-          } else if (deliverAndEarnMatch.available && deliverAndEarnMatch.offersCreated > 0) {
-            const secondAcceptance = await waitForLocalRiderAcceptance(createdShipment.shipment_id, 90000);
-            if (!secondAcceptance.matched) {
-              setNoRidersFound(true);
-              setFormError(assignmentUiCopy.noMatchError);
-              setLoading(false);
-              setSearchingRiders(false);
-              return;
-            }
-
-            setSearchingRiders(false);
-          } else {
-            setNoRidersFound(true);
-            setFormError(assignmentUiCopy.noMatchError);
-            setLoading(false);
-            setSearchingRiders(false);
-            return;
-          }
+          setNoRidersFound(true);
+          setFormError(assignmentUiCopy.noMatchError);
+          setLoading(false);
+          setSearchingRiders(false);
+          return;
         } else {
           setSearchingRiders(false);
         }
