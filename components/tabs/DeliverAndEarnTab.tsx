@@ -170,6 +170,13 @@ export default function DeliverAndEarnTab({ customerId }: DeliverAndEarnTabProps
 
   const profile = snapshot?.profile ?? null;
   const primaryVehicle = snapshot?.vehicles[0] ?? null;
+  const latestInvite = snapshot?.latestInvite ?? null;
+  const inviteExpired = latestInvite?.invite_status === 'issued' && latestInvite.expires_at && new Date(latestInvite.expires_at).getTime() <= Date.now();
+  const inviteStatus = inviteExpired ? 'expired' : latestInvite?.invite_status;
+  const riderAppUrl = latestInvite?.rider_app_url || RIDER_APP_URL;
+  const riderInviteUrl = latestInvite?.invite_code && inviteStatus === 'issued'
+    ? `${riderAppUrl}${riderAppUrl.includes('?') ? '&' : '?'}de_invite_code=${encodeURIComponent(latestInvite.invite_code)}`
+    : riderAppUrl;
   const isApproved = profile?.application_status === 'approved' && profile.operator_status === 'active';
   const isDemoPreview = Boolean(snapshot?.isDemoPreview);
   const applicationLocked = ['approved', 'in_review'].includes(profile?.application_status || '');
@@ -330,10 +337,21 @@ export default function DeliverAndEarnTab({ customerId }: DeliverAndEarnTabProps
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={styles.panelTitle}>Rider App Handoff</Text>
             <Text style={styles.panelText}>
-              Your customer application is approved. RENAX operations will issue a secure Rider app invite, and that Rider login will show only Deliver & Earn tools for this personal car.
+              {latestInvite
+                ? inviteStatus === 'issued'
+                  ? 'Your secure Rider app invite is ready. Open Rider and sign in with this same RENAX account.'
+                  : inviteStatus === 'accepted'
+                    ? 'Rider access is active. Open Rider and sign in with this same RENAX account.'
+                    : 'Your Rider invite is not active. Ask RENAX operations to reissue access.'
+                : 'Your customer application is approved. RENAX operations will issue a secure Rider app invite, and that Rider login will show only Deliver & Earn tools for this personal car.'}
             </Text>
+            {latestInvite ? (
+              <Text selectable style={styles.inviteCodeText}>
+                Code: {latestInvite.invite_code} · Status: {statusLabel(inviteStatus)} · Expires: {latestInvite.expires_at ? new Date(latestInvite.expires_at).toLocaleString() : 'N/A'}
+              </Text>
+            ) : null}
           </View>
-          <Pressable style={styles.riderAppBtn} onPress={() => Linking.openURL(RIDER_APP_URL)}>
+          <Pressable style={styles.riderAppBtn} onPress={() => Linking.openURL(riderInviteUrl)}>
             <Car size={18} color="#002B22" />
             <Text style={styles.riderAppBtnText}>Open Rider App</Text>
           </Pressable>
@@ -504,6 +522,7 @@ const styles = StyleSheet.create({
   workflowStepText: { flex: 1, fontFamily: 'Outfit_6', fontSize: 12, color: '#374151', lineHeight: 17 },
   handoffPanel: { marginTop: 16, backgroundColor: '#ECFDF5', borderWidth: 1, borderColor: '#A7F3D0', borderRadius: 8, padding: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16 },
   panelTitle: { fontFamily: 'PlusJakartaSans_7', fontSize: 18, color: '#111827' },
+  inviteCodeText: { marginTop: 8, fontFamily: 'Outfit_6', fontSize: 13, color: '#047857', lineHeight: 19 },
   riderAppBtn: { minWidth: 150, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 8, backgroundColor: '#ccfd3a', paddingHorizontal: 16, paddingVertical: 13 },
   riderAppBtnText: { fontFamily: 'Outfit_7', fontSize: 14, color: '#002B22' },
   disabledBtn: { opacity: 0.45 },

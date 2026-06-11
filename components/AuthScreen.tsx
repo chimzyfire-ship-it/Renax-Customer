@@ -8,6 +8,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Eye, EyeOff, ArrowRight, Check, MapPin } from 'lucide-react-native';
 import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated';
 import { supabase } from '../supabase';
+import { ensureCustomerProfileForUser } from '../utils/customerProfile';
 
 const NIGERIAN_STATES = [
   'Abia','Adamawa','Akwa Ibom','Anambra','Bauchi','Bayelsa','Benue','Borno',
@@ -31,6 +32,7 @@ const FREQ_TYPES = [
 
 type AuthenticatedProfile = {
   state?: string;
+  name?: string;
   shipType?: string;
   freq?: string;
 };
@@ -150,19 +152,16 @@ export default function AuthScreen({ onAuthenticated }: AuthScreenProps) {
         return;
       }
 
-      const { error: profileError } = await supabase.from('profiles').upsert({
-        id: data.user.id,
-        email: trimmedEmail,
-        role: 'customer',
-        full_name: name.trim() || null,
-        phone_number: phone.trim() || null,
-        state: selectedState || null,
+      const profile = await ensureCustomerProfileForUser({
+        user: data.user,
+        fullName: name,
+        phoneNumber: phone,
+        state: selectedState,
       });
 
-      if (profileError) throw profileError;
-
       onAuthenticated?.({
-        state: selectedState || 'Lagos',
+        state: profile?.state || selectedState || 'Lagos',
+        name: profile?.full_name || name.trim(),
         shipType: selectedShipType,
         freq: selectedFreq,
       });
