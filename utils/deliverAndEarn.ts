@@ -118,11 +118,23 @@ export type DeliverAndEarnWalletSummary = {
   total_balance: number;
 };
 
+export type DeliverAndEarnInvite = {
+  id: string;
+  profile_id: string;
+  invite_code: string;
+  invite_status: 'issued' | 'accepted' | 'expired' | 'revoked';
+  rider_app_url: string;
+  expires_at: string;
+  accepted_at: string | null;
+  created_at: string;
+};
+
 export type DeliverAndEarnSnapshot = {
   userId: string | null;
   isDemoPreview: boolean;
   profile: DeliverAndEarnProfile | null;
   vehicles: DeliverAndEarnVehicle[];
+  latestInvite: DeliverAndEarnInvite | null;
   availability: DeliverAndEarnAvailability | null;
   offers: DeliverAndEarnOffer[];
   earnings: DeliverAndEarnEarning[];
@@ -160,6 +172,7 @@ const EMPTY_SNAPSHOT: DeliverAndEarnSnapshot = {
   isDemoPreview: false,
   profile: null,
   vehicles: [],
+  latestInvite: null,
   availability: null,
   offers: [],
   earnings: [],
@@ -226,7 +239,7 @@ export async function fetchDeliverAndEarnSnapshot(previewUserId?: string | null)
     return createDeliverAndEarnPreviewSnapshot(previewUserId);
   }
 
-  const [profile, vehicles] = await Promise.all([
+  const [profile, vehicles, invites] = await Promise.all([
     safeSnapshotQuery<DeliverAndEarnProfile>('profile', () =>
       supabase
       .from('deliver_and_earn_profiles')
@@ -242,6 +255,14 @@ export async function fetchDeliverAndEarnSnapshot(previewUserId?: string | null)
       .order('updated_at', { ascending: false })
       .limit(5)
     ),
+    safeSnapshotQuery<DeliverAndEarnInvite[]>('invites', () =>
+      supabase
+      .from('deliver_and_earn_operator_invites')
+      .select('id, profile_id, invite_code, invite_status, rider_app_url, expires_at, accepted_at, created_at')
+      .eq('profile_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+    ),
   ]);
 
   return {
@@ -249,6 +270,7 @@ export async function fetchDeliverAndEarnSnapshot(previewUserId?: string | null)
     isDemoPreview: false,
     profile: profile ?? null,
     vehicles: vehicles ?? [],
+    latestInvite: invites?.[0] ?? null,
     availability: null,
     offers: [],
     earnings: [],
