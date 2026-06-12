@@ -94,7 +94,7 @@ const PAYMENT_METHODS = [
   'Pay on Delivery',
 ];
 
-const LOCAL_CARRIER_SEARCH_SECONDS = 90;
+const LOCAL_CARRIER_SEARCH_SECONDS = 300;
 
 const RELAY_PICKUP_OPTIONS = [
   {
