@@ -185,7 +185,7 @@ async function fetchShipmentAssignmentState(shipmentId: string) {
   return data;
 }
 
-async function waitForLocalRiderAcceptance(shipmentId: string, timeoutMs = 90000, pollMs = 1500) {
+async function waitForLocalRiderAcceptance(shipmentId: string, timeoutMs = LOCAL_CARRIER_SEARCH_SECONDS * 1000, pollMs = 1500) {
   const initialState = await fetchShipmentAssignmentState(shipmentId);
   if (hasShipmentBeenAccepted(initialState)) {
     return { matched: true, data: initialState };
@@ -297,6 +297,43 @@ async function openLocalCarrierSearch(shipmentId: string) {
     .eq('id', shipmentId);
 
   return requestDeliverAndEarnCarrierMatch(shipmentId);
+}
+
+async function cancelCustomerLiveCarrierSearch(shipmentId: string) {
+  const { error } = await supabase.rpc('customer_cancel_live_carrier_search', {
+    p_payload: {
+      shipment_id: shipmentId,
+      reason: 'Customer cancelled live carrier search from Create Shipment.',
+    },
+  });
+
+  if (error) {
+    const message = error.message || '';
+    const rpcMissing =
+      message.includes('customer_cancel_live_carrier_search') &&
+      (message.includes('schema cache') || message.includes('Could not find the function'));
+
+    if (!rpcMissing) {
+      throw new Error(message || 'Could not cancel this carrier search.');
+    }
+
+    const { error: fallbackError } = await supabase
+      .from('shipments')
+      .update({
+        status: 'cancelled',
+        dispatch_stage: 'cancelled',
+        carrier_search_expires_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', shipmentId)
+      .is('assigned_rider_id', null)
+      .is('final_mile_rider_id', null)
+      .is('deliver_and_earn_operator_id', null);
+
+    if (fallbackError) {
+      throw new Error(fallbackError.message || 'Could not cancel this carrier search.');
+    }
+  }
 }
 
 async function createCustomerShipmentCheckout(payload: Record<string, unknown>) {
@@ -502,6 +539,7 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
   const [noRidersFound, setNoRidersFound] = useState(false);
   const [matchCountdown, setMatchCountdown] = useState(LOCAL_CARRIER_SEARCH_SECONDS);
   const [pendingLocalMatch, setPendingLocalMatch] = useState<PendingLocalMatch | null>(null);
+  const matchAttemptRef = React.useRef(0);
 
   // Pickers visibility
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
@@ -533,12 +571,15 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
   const retryPendingLocalMatch = async () => {
     if (!pendingLocalMatch) return;
 
+    const matchAttemptId = matchAttemptRef.current + 1;
+    matchAttemptRef.current = matchAttemptId;
     setFormError('');
     setNoRidersFound(false);
     setSearchingRiders(true);
     setLoading(true);
 
     const searchResult = await openLocalCarrierSearch(pendingLocalMatch.shipmentId);
+    if (matchAttemptId !== matchAttemptRef.current) return;
 
     if (searchResult.alreadyAssigned) {
       showMatchedShipmentReceipt(pendingLocalMatch);
@@ -548,6 +589,7 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
     }
 
     const acceptance = await waitForLocalRiderAcceptance(pendingLocalMatch.shipmentId);
+    if (matchAttemptId !== matchAttemptRef.current) return;
 
     if (!acceptance.matched) {
       setNoRidersFound(true);
@@ -560,6 +602,31 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
     showMatchedShipmentReceipt(pendingLocalMatch);
     setSearchingRiders(false);
     setLoading(false);
+  };
+
+  const handleCancelShipment = async () => {
+    matchAttemptRef.current += 1;
+
+    if (!pendingLocalMatch) {
+      setFormError('');
+      setSearchingRiders(false);
+      setNoRidersFound(false);
+      setLoading(false);
+      return;
+    }
+
+    const shipmentToCancel = pendingLocalMatch;
+    setPendingLocalMatch(null);
+    setSearchingRiders(false);
+    setNoRidersFound(false);
+    setLoading(false);
+    setFormError('');
+
+    try {
+      await cancelCustomerLiveCarrierSearch(shipmentToCancel.shipmentId);
+    } catch (error: any) {
+      setFormError(error?.message || 'Could not cancel this carrier search. Please try again.');
+    }
   };
 
   // ── Derived State & Calculations ─────────────────────────────────────────────
@@ -751,6 +818,8 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
 
       // Same-state shipments remain provisional until a live rider accepts.
       if (requiresImmediateAssignment && createdShipment?.shipment_id) {
+        const matchAttemptId = matchAttemptRef.current + 1;
+        matchAttemptRef.current = matchAttemptId;
         const localMatch = {
           shipmentId: createdShipment.shipment_id,
           trackingId: createdShipment.tracking_id || generatedId,
@@ -764,12 +833,14 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
         setNoRidersFound(false);
 
         const searchResult = await openLocalCarrierSearch(createdShipment.shipment_id);
+        if (matchAttemptId !== matchAttemptRef.current) return;
 
         if (searchResult.alreadyAssigned) {
           setSearchingRiders(false);
         }
 
         const acceptance = await waitForLocalRiderAcceptance(createdShipment.shipment_id);
+        if (matchAttemptId !== matchAttemptRef.current) return;
 
         if (!acceptance.matched) {
           setNoRidersFound(true);
@@ -1278,7 +1349,11 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
             {loading ? (searchingRiders ? assignmentUiCopy.createCta : 'CREATING...') : 'CREATE SHIPMENT & GET ORDER ID'}
           </Text>
         </Pressable>
-        <Pressable style={styles.cancelBtn}>
+        <Pressable
+          style={[styles.cancelBtn, (loading && !searchingRiders) && { opacity: 0.5 }]}
+          onPress={handleCancelShipment}
+          disabled={loading && !searchingRiders}
+        >
           <X color="#666" size={16} />
           <Text style={styles.cancelBtnText}>CANCEL</Text>
         </Pressable>
