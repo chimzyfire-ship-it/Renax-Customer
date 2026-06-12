@@ -50,6 +50,44 @@ const PACKAGE_CATEGORIES = [
   'Fragile/Sensitive',
 ];
 
+const PACKAGE_WEIGHT_LIMITS: Record<string, { min: number; max?: number; defaultWeight: number }> = {
+  Document: { min: 0.1, max: 1, defaultWeight: 0.5 },
+  'Small Box (1-5kg)': { min: 1, max: 5, defaultWeight: 3 },
+  'Medium Box (5-15kg)': { min: 5, max: 15, defaultWeight: 10 },
+  'Large Freight (15kg+)': { min: 15, defaultWeight: 20 },
+  'Fragile/Sensitive': { min: 0.1, defaultWeight: 3 },
+};
+
+const packageWeightRules = (packageCategory: string) =>
+  PACKAGE_WEIGHT_LIMITS[packageCategory] || { min: 0.1, defaultWeight: 1 };
+
+const normalizePackageWeight = (packageCategory: string, rawWeight: string | number | null | undefined) => {
+  const rules = packageWeightRules(packageCategory);
+  const parsed = typeof rawWeight === 'number' ? rawWeight : parseFloat(String(rawWeight || ''));
+  const baseWeight = Number.isFinite(parsed) && parsed > 0 ? parsed : rules.defaultWeight;
+  const minBounded = Math.max(baseWeight, rules.min);
+  return rules.max ? Math.min(minBounded, rules.max) : minBounded;
+};
+
+const packageWeightError = (packageCategory: string, rawWeight: string) => {
+  const rules = packageWeightRules(packageCategory);
+  const parsed = parseFloat(rawWeight);
+
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return 'Enter a valid package weight.';
+  }
+
+  if (parsed < rules.min) {
+    return `${packageCategory} must be at least ${rules.min}kg.`;
+  }
+
+  if (rules.max && parsed > rules.max) {
+    return `${packageCategory} must be ${rules.min}-${rules.max}kg. Choose a larger package category for heavier items.`;
+  }
+
+  return '';
+};
+
 const PAYMENT_METHODS = [
   'RENAX Wallet',
   'Credit/Debit Card',
@@ -527,7 +565,6 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
   // ── Derived State & Calculations ─────────────────────────────────────────────
   const isStep1Complete = !!(senderName && senderPhone && pickupData);
   const isStep2Complete = !!(recipientName && recipientPhone && deliveryData && deliveryLandmark);
-  const isStep3Complete = !!(weight && category && serviceSelected && payMethod && packageDescription);
   const shipmentType = detectShipmentType(
     pickupData?.address || '',
     deliveryData?.address || ''
@@ -537,6 +574,12 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
   const interstateRouteKey = isInterStateShipment && pickupData?.address && deliveryData?.address
     ? `${pickupData.address}__${deliveryData.address}`
     : '';
+  const normalizedWeightKg = React.useMemo(
+    () => normalizePackageWeight(category, weight),
+    [category, weight]
+  );
+  const weightValidationError = category ? packageWeightError(category, weight) : '';
+  const isStep3Complete = !!(weight && category && serviceSelected && payMethod && packageDescription && !weightValidationError);
 
   let currentStep = 0;
   if (isStep1Complete) currentStep = 1;
@@ -576,15 +619,14 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
       price += actualDistance * 100; // e.g. ₦100 per km
     }
 
-    const w = parseFloat(weight) || 0;
-    price += (w * PRICING_FACTORS.perKg);
+    price += (normalizedWeightKg * PRICING_FACTORS.perKg);
     price *= (PRICING_FACTORS.serviceMultipliers[serviceSelected] || 1);
     
     if (category === 'Fragile/Sensitive') price += 1000;
     if (category === 'Large Freight (15kg+)') price += 2000;
     
     return Math.round(price);
-  }, [weight, category, serviceSelected, actualDistance]);
+  }, [normalizedWeightKg, category, serviceSelected, actualDistance]);
 
   const handleRecalculate = async () => {
     setIsCalculating(true);
@@ -593,6 +635,14 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
       setActualDistance(distance);
     }
     setTimeout(() => setIsCalculating(false), 600);
+  };
+
+  const handleCategorySelect = (nextCategory: string) => {
+    setCategory(nextCategory);
+    const nextWeight = normalizePackageWeight(nextCategory, weight);
+    if (!weight || nextWeight !== parseFloat(weight)) {
+      setWeight(String(nextWeight));
+    }
   };
 
   // ── Handlers ─────────────────────────────────────────────────────────────────
@@ -608,7 +658,7 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
       return;
     }
     if (!isStep3Complete) {
-      setFormError('Please complete all required Package Details, including Package Description (Step 3).');
+      setFormError(weightValidationError || 'Please complete all required Package Details, including Package Description (Step 3).');
       return;
     }
 
@@ -671,7 +721,7 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
         delivery_lat: deliveryData?.lat || null,
         delivery_lon: deliveryData?.lon || null,
         distance_km: actualDistance || null,
-        weight_kg: parseFloat(weight),
+        weight_kg: normalizedWeightKg,
         dimensions_cm: dims || null,
         package_category: category,
         service_level: serviceSelected,
@@ -820,7 +870,7 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
     </div>
     <div class="section">
       <div class="section-title">SHIPMENT DETAILS</div>
-      <div class="row"><span class="row-label">Package</span><span class="row-value">${weight}kg — ${category}</span></div>
+      <div class="row"><span class="row-label">Package</span><span class="row-value">${normalizedWeightKg}kg — ${category}</span></div>
       <div class="row"><span class="row-label">Description</span><span class="row-value">${packageDescription}</span></div>
       <div class="row"><span class="row-label">Service Level</span><span class="row-value">${serviceSelected}</span></div>
       <div class="row"><span class="row-label">Distance</span><span class="row-value">${actualDistance ? actualDistance + ' km' : 'N/A'}</span></div>
@@ -899,7 +949,7 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
         title="Package Category"
         options={PACKAGE_CATEGORIES}
         selected={category}
-        onSelect={setCategory}
+        onSelect={handleCategorySelect}
         onClose={() => setShowCategoryPicker(false)}
       />
       <PickerModal
@@ -1072,6 +1122,7 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
                 onChangeText: setWeight,
                 keyboardType: "numeric",
               }, weight)}
+              {weightValidationError ? <Text style={styles.validationText}>{weightValidationError}</Text> : null}
             </View>
             <View style={[styles.packageMetaField, styles.packageMetaFieldWide]}>
               <Text style={styles.fieldNoteTitle}>Dimensions (cm) - Optional</Text>
@@ -1309,7 +1360,7 @@ export default function CreateShipmentTab({ customerId }: { customerId?: string 
                 </View>
                 <View style={styles.receiptRow}>
                   <Text style={styles.receiptLabel}>Package</Text>
-                  <Text style={styles.receiptValue}>{weight}kg - {category}</Text>
+                  <Text style={styles.receiptValue}>{normalizedWeightKg}kg - {category}</Text>
                 </View>
                 <View style={styles.receiptRow}>
                   <Text style={styles.receiptLabel}>Payment</Text>
@@ -1562,6 +1613,7 @@ const styles = StyleSheet.create({
   textAreaInput: { textAlignVertical: 'top', height: 80 },
   fieldNoteTitle: { fontFamily: 'Outfit_6', fontSize: 13, color: '#333', marginBottom: 4 },
   fieldNote: { fontFamily: 'Outfit_4', fontSize: 12, color: '#888', marginBottom: 8 },
+  validationText: { fontFamily: 'Outfit_6', fontSize: 11, color: '#DC2626', marginTop: 6 },
   landmarkBtn: { borderWidth: 1, borderColor: '#ccfd3a', borderRadius: 8, paddingVertical: 10, paddingHorizontal: 16, alignSelf: 'flex-start', marginTop: 10 },
   landmarkBtnText: { fontFamily: 'Outfit_6', fontSize: 13, color: '#004d3d' },
   landmarkRequiredBox: { backgroundColor: '#FEF9E7', borderRadius: 8, padding: 12, borderWidth: 1, borderColor: '#F2C94C', marginTop: 8 },
