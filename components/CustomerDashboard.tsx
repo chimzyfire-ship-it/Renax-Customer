@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  Alert,
   Image,
   ImageBackground,
   Platform,
@@ -239,6 +240,32 @@ export default function CustomerDashboard({ userState = 'Lagos', userName = 'Ade
       notificationChannelRef.current = null;
     };
   }, [customerId, loadNotifications]);
+
+  // ── Realtime: detect admin cancellation of active shipment ───────────────
+  useEffect(() => {
+    const activeShipmentId = dashboardMetrics?.activeShipment?.id;
+    if (!activeShipmentId) return;
+    const channel = supabase
+      .channel(`customer-cancel-${activeShipmentId}`)
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'shipments',
+        filter: `id=eq.${activeShipmentId}`,
+      }, (payload: any) => {
+        const updated = payload.new;
+        if (updated.dispatch_stage === 'cancelled' || updated.status === 'cancelled') {
+          const trackId = dashboardMetrics?.activeShipment?.tracking_id || activeShipmentId;
+          Alert.alert(
+            'Shipment Cancelled',
+            `Your shipment ${trackId} has been cancelled by the administrator. Please contact support if you have any questions.`,
+            [{ text: 'OK', onPress: () => { refreshDashboard(); } }],
+          );
+        }
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [dashboardMetrics?.activeShipment?.id, refreshDashboard]);
 
   const [fontsLoaded] = useFonts({
     PlusJakartaSans_8: PlusJakartaSans_800ExtraBold,

@@ -1,7 +1,7 @@
 // TrackShipmentTab.tsx — Live tracking with Supabase Realtime + Leaflet map
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, Pressable,
+  Alert, View, Text, StyleSheet, ScrollView, Pressable,
   TextInput, useWindowDimensions, ActivityIndicator, Linking, Image,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
@@ -203,7 +203,27 @@ export default function TrackShipmentTab({ initialTrackingId = '', autoTrackSign
         table: 'shipments',
         filter: `id=eq.${shipmentData.id}`,
       }, (payload: any) => {
-        setShipmentData(payload.new);
+        const updated = payload.new;
+        setShipmentData(updated);
+        // Detect admin cancellation and alert the customer
+        if (updated.dispatch_stage === 'cancelled' || updated.status === 'cancelled') {
+          const trackId = updated.tracking_id || updated.id;
+          Alert.alert(
+            'Shipment Cancelled',
+            `Shipment ${trackId} has been cancelled by the administrator. Please contact support if you have questions.`,
+            [{
+              text: 'OK',
+              onPress: () => {
+                setShipmentData(null);
+                setTimelineEvents([]);
+                setProofRecords([]);
+                setShowMap(false);
+                setSearchQuery('');
+                setError('');
+              },
+            }],
+          );
+        }
       })
       .on('postgres_changes', {
         event: 'INSERT',
